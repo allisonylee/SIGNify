@@ -118,7 +118,9 @@ class GISLRDataset(Dataset):
         if self.data is not None:
             w = self.data[i].copy()
         else:
-            w = np.load(FEAT / f"{int(self.rows.sequence_id.iloc[i])}.npy").astype(np.float32)
+            sid = int(self.rows.sequence_id.iloc[i])
+            src = REST_DIR if sid >= 900_000_000 else FEAT
+            w = np.load(src / f"{sid}.npy").astype(np.float32)
         if self.train:
             g = self.rng
             if g.random() < 0.5:
@@ -138,12 +140,23 @@ class GISLRDataset(Dataset):
 
 def signer_independent_split(rows: pd.DataFrame, n_val_signers=4, seed=0):
     """Hold out whole signers. See the module docstring."""
-    signers = np.sort(rows.participant_id.unique())
+    real = rows[rows.participant_id >= 0]
+    rest = rows[rows.participant_id < 0]          # recorded rest, no signer
+    signers = np.sort(real.participant_id.unique())
     rng = np.random.default_rng(seed)
     val = set(rng.choice(signers, size=min(n_val_signers, len(signers) - 1),
                          replace=False).tolist())
-    tr = rows[~rows.participant_id.isin(val)]
-    va = rows[rows.participant_id.isin(val)]
+    tr = real[~real.participant_id.isin(val)]
+    va = real[real.participant_id.isin(val)]
+    if len(rest):
+        # Rest windows all come from one recording session, so they cannot be
+        # split by signer. Split them randomly at the same ratio instead, and
+        # keep them out of the signer-independence claim.
+        frac = len(va) / max(len(va) + len(tr), 1)
+        shuf = rest.sample(frac=1.0, random_state=seed)
+        k = int(len(shuf) * frac)
+        va = pd.concat([va, shuf.iloc[:k]], ignore_index=True)
+        tr = pd.concat([tr, shuf.iloc[k:]], ignore_index=True)
     return tr, va, sorted(val)
 
 
@@ -164,10 +177,29 @@ def load_packed(sequence_ids: np.ndarray) -> np.ndarray:
         return out
     all_ids = np.load(IDS)
     pos = {int(v): i for i, v in enumerate(all_ids)}
-    rows = np.fromiter((pos[int(s)] for s in sequence_ids), dtype=np.int64,
-                       count=len(sequence_ids))
     mm = np.load(PACK, mmap_mode="r")
-    return np.ascontiguousarray(mm[rows])
+    out = np.empty((len(sequence_ids), *mm.shape[1:]), dtype=np.float32)
+    for k, sid in enumerate(sequence_ids):
+        sid = int(sid)
+        if sid in pos:
+            out[k] = mm[pos[sid]]
+        else:                       # recorded rest window, outside the pack
+            out[k] = np.load(REST_DIR / f"{sid}.npy")
+    return out
+
+
+REST_LABEL = "__REST__"
+REST_DIR = DATA / "rest"
+
+
+def load_rest_rows() -> pd.DataFrame:
+    """Recorded rest windows, if any (scripts/v010_record_rest.py)."""
+    idx = DATA / "rest_index.parquet"
+    if not idx.exists():
+        return pd.DataFrame(columns=["sequence_id", "sign", "participant_id"])
+    df = pd.read_parquet(idx)
+    have = {int(p.stem) for p in REST_DIR.glob("*.npy")}
+    return df[df.sequence_id.isin(have)].reset_index(drop=True)
 
 
 def load_rows() -> pd.DataFrame:

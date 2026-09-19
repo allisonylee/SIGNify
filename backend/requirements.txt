@@ -13,5 +13,13 @@ opencv-contrib-python==5.0.0.93
 # Backend
 fastapi==0.141.1
 uvicorn==0.53.0
-websockets==17.1
+# google-genai pins websockets<17; 16.1.1 verified working with the
+# ElevenLabs streaming client.
+websockets==16.1.1
 python-dotenv==1.2.3
+
+# Stage 4 -- LLM layer
+# gemini-3.5-flash-lite measured at 566 ms; it REJECTS thinking_config (400).
+# gemini-2.5-flash-lite is retired (404) despite still being listed.
+google-genai==2.24.0
+httpx==0.28.1

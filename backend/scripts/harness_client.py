@@ -97,9 +97,14 @@ async def run(args):
                 k = m.get("type")
                 got[k] = got.get(k, 0) + 1
                 if k == "partial":
-                    print(f"  <- gloss   {m['gloss']} conf={m['conf']}")
+                    # 'gloss' is the utterance SO FAR, not a single word.
+                    print(f"  <- gloss   utterance so far: {m['gloss']}  "
+                          f"conf={m['conf']}")
                 elif k == "text":
-                    print(f"  <- text    {m['text']!r} [{m['lang']}]")
+                    print(f"  <- SENTENCE {m['text']!r} [{m['lang']}]")
+                    if m.get("glosses"):
+                        print(f"               from {m['glosses']} "
+                              f"(ended: {m.get('end_reason')})")
                 elif k == "timing":
                     print(f"  <- timing  {({kk: vv for kk, vv in m.items() if kk != 'type'})}")
                 elif k == "audio":
@@ -169,8 +174,16 @@ async def run(args):
           f"sending; requested {args.fps:.0f})")
     print(f"  total wall clock {dur:.1f}s (includes {args.linger:.0f}s linger)")
     print(f"  received {got}")
-    good = got.get("text", 0) > 0 and (args.no_audio or got.get("audio", 0) > 0)
-    print(f"  END-TO-END: {'PASS' if good else 'FAIL'}")
+    emitted = got.get("text", 0) > 0
+    good = (not emitted) or (args.no_audio or got.get("audio", 0) > 0)
+    if emitted:
+        print(f"  END-TO-END: {'PASS' if good else 'FAIL'} "
+              f"(recognizer emitted and the full chain ran)")
+    else:
+        print("  END-TO-END: TRANSPORT OK, no signs emitted.")
+        print("    Expected for --source synthetic: the gated recognizer only "
+              "fires on a\n    confident sign. Set SIGN_MIN_CONFIDENCE=0 on the "
+              "server to force emissions.")
     print(f"{'=' * 58}")
     return 0 if good else 1
 

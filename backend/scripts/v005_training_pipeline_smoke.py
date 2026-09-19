@@ -31,6 +31,12 @@ N_SIGNS, N_SIGNERS, PER = 8, 6, 12
 T = config.WINDOW_FRAMES
 scratch = Path(tempfile.mkdtemp(prefix="gislr_smoke_"))
 D.FEAT = scratch / "features"; D.FEAT.mkdir(parents=True)
+# Point every data path at the scratch dir. Without this, load_packed() finds
+# the REAL features_all.npy, fails to locate the synthetic ids in it, and falls
+# through to the rest directory.
+D.PACK = scratch / "features_all.npy"
+D.IDS = scratch / "features_ids.npy"
+D.REST_DIR = scratch / "rest"; D.REST_DIR.mkdir(parents=True)
 
 print("\n[1] synthesise features with the real shape/layout")
 rng = np.random.default_rng(0)
