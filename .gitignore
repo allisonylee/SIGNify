@@ -32,3 +32,5 @@ backend/models/*
 izzie-rules.txt
 .cursor
 frontend-rules.txt
+.env
+speech-rules.txt
