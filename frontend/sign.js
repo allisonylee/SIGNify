@@ -6,7 +6,7 @@
  * measured to work:
  *
  *   harness_client.py --source webcam --mode A --seconds 90 \
- *     --vocab hello,me,happy,see,you --expect 5
+
  *
  * so the capture parameters below are the harness's defaults, not new choices.
  * Changing them means the demo is no longer the thing that was tested.
@@ -29,12 +29,14 @@
 import { speakerLanguage, readVoice } from "./languages.js";
 
 // ---- the demo contract, fixed -------------------------------------------
-// Restricting 255 classes to 5 turns a 255-way decision into a 5-way one, and
-// per-sign accuracy compounds across a sentence. `expect` then ends the
-// utterance on COUNT rather than on a silence timeout, so the LLM fires the
-// instant the fifth sign lands. Both are what the tested command used.
-const DEMO_VOCAB = ["hello", "me", "happy", "see", "you"];
-const DEMO_EXPECT = DEMO_VOCAB.length;
+// Utterance length is the SERVER's call (config.UTTERANCE_MAX_GLOSSES, default
+// 2): a sentence is sent as soon as a second sign lands, or after a short pause
+// on a single sign. This page no longer asks for a fixed number of signs -- it
+// used to send `expect: 5`, which meant nothing was spoken until five words
+// were in.
+//
+// There is deliberately NO vocabulary restriction either. The classifier
+// decides over its whole label set.
 const SIGN_LANGUAGE = "ase";              // ASL. The only model this page uses.
 
 // ---- harness defaults, copied ---------------------------------------------
@@ -79,7 +81,7 @@ function setStatus(text) {
 /** Progress as the signs land: "hello me happy · 3/5". */
 function showGlosses(list) {
   ui.glosses.textContent = list.length
-    ? `${list.join(" ")}  ·  ${list.length}/${DEMO_EXPECT}`
+    ? list.join(" ")
     : "";
 }
 
@@ -158,8 +160,6 @@ function configMessage() {
     // voice ElevenLabs designed offline -- a dict lookup, no API call, so this
     // adds nothing to speech latency.
     voice: readVoice(),
-    vocab: DEMO_VOCAB,
-    expect: DEMO_EXPECT,
   };
 }
 

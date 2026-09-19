@@ -128,6 +128,13 @@ REC_IGNORE_REST = os.environ.get("SIGN_IGNORE_REST", "") == "1"
 #   longer  -> safer grouping, later speech
 UTTERANCE_TIMEOUT_S = float(os.environ.get("SIGN_UTTERANCE_TIMEOUT_S", "1.2"))
 
+# HOW MANY SIGNS MAKE AN UTTERANCE BEFORE IT IS SENT.
+# 2 means the sentence goes to the LLM the instant a second sign lands, and a
+# lone sign goes after UTTERANCE_TIMEOUT_S of quiet -- so speech follows one or
+# two words instead of waiting for a whole phrase. Raise it to hold longer
+# utterances together at the cost of waiting for them.
+UTTERANCE_MAX_GLOSSES = int(os.environ.get("SIGN_MAX_GLOSSES", "2"))
+
 # Feature spec -- see app/landmarks.py. Single source of truth lives there.
 WINDOW_FRAMES = 32          # frames per classified window
 WINDOW_SECONDS = 1.5        # wall-clock span the window covers

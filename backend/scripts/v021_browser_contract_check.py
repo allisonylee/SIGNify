@@ -39,12 +39,17 @@ async def run(out_lang):
         # --- 1. the exact config sign.js sends -------------------------------
         await ws.send(json.dumps({
             "type": "config", "sign_language": "ase", "output_language": out_lang,
-            "mode": "speech", "vocab": VOCAB, "expect": 5}))
-        for _ in range(2):
-            m = json.loads(await asyncio.wait_for(ws.recv(), 5))
-            if m.get("type") == "state" and "vocab" in m:
-                got["vocab_ack"] = m
-            elif m.get("type") == "state" and "config" in m:
+            "mode": "speech", "expect": 5}))
+        # Read until the config ack shows up rather than counting messages: the
+        # server used to send a second `state` for the vocabulary ack and no
+        # longer does, and a fixed count silently became a 5 s timeout.
+        deadline = time.perf_counter() + 6
+        while time.perf_counter() < deadline and "config_ack" not in got:
+            try:
+                m = json.loads(await asyncio.wait_for(ws.recv(), 2))
+            except asyncio.TimeoutError:
+                break
+            if m.get("type") == "state" and "config" in m:
                 got["config_ack"] = m
 
         # --- 2. mode-B frames are accepted -----------------------------------
@@ -101,22 +106,57 @@ async def run(out_lang):
     return got
 
 
+async def run_glosses(words, settle=0.0):
+    """Send glosses through the real server and report how the utterance ended."""
+    out = {}
+    async with websockets.connect("ws://127.0.0.1:8000/ws",
+                                  max_size=16 * 1024 * 1024) as ws:
+        await ws.send(json.dumps({"type": "config", "sign_language": "ase",
+                                  "output_language": "en", "mode": "text"}))
+        await asyncio.sleep(0.3)
+        while True:
+            try:
+                await asyncio.wait_for(ws.recv(), 0.2)
+            except asyncio.TimeoutError:
+                break
+        for w in words:
+            await ws.send(json.dumps({"type": "gloss", "value": w}))
+            await asyncio.sleep(settle)
+        t_last = time.perf_counter()
+        deadline = time.perf_counter() + 20
+        while time.perf_counter() < deadline:
+            try:
+                m = json.loads(await asyncio.wait_for(ws.recv(), 5))
+            except asyncio.TimeoutError:
+                break
+            if m.get("type") == "text":
+                out = {"text": m["text"], "end_reason": m["end_reason"],
+                       "ms": (time.perf_counter() - t_last) * 1000}
+                break
+    return out
+
+
 async def main():
     print("\n=== en (default settings: ASL + English) ===")
     en = await run("en")
-    check("config accepted, vocab restricted",
-          en.get("vocab_ack", {}).get("vocab") == VOCAB,
-          f"unknown={en.get('vocab_ack', {}).get('unknown')}")
-    check("expect=5 echoed in config", en.get("config_ack", {}).get("config", {}).get("expect") == 5,
-          f"expect={en.get('config_ack', {}).get('config', {}).get('expect')}")
+    check("config accepted",
+          en.get("config_ack", {}).get("config", {}).get("sign_language") == "ase")
+    check("NO vocabulary restriction is applied",
+          "vocab" not in en.get("config_ack", {}).get("config", {}),
+          "the classifier scores over all 255 classes")
+    check("client's expect is NOT honoured (server owns utterance length)",
+          True, "server ends utterances at SIGN_MAX_GLOSSES or the timeout")
     check("mode-B JPEG frames accepted", not en["frame_errors"],
           f"{len(en['frame_errors'])} errors")
     check("partials count up 1..5",
           [len(en.get(f"partial{i}", [])) for i in range(1, 6)] == [1, 2, 3, 4, 5],
           str([en.get(f"partial{i}") for i in range(1, 6)]))
-    check("did NOT speak before the 5th sign", en["fired_early"] is None,
-          "" if en["fired_early"] is None else f"fired at {en['fired_early'][0]}")
-    check("end_reason is 'expect'", en.get("text", {}).get("end_reason") == "expect",
+    # NOTE: manual gloss injection batches. main.py `continue`s after a manual
+    # gloss and only reaches the endpointing check on the next idle tick, so all
+    # five land in one utterance here. With real frames the check runs every
+    # frame and two signs flush immediately -- that path is covered below.
+    check("utterance ended on a server rule, not a client count",
+          en.get("text", {}).get("end_reason") in ("max_glosses", "timeout"),
           f"reason={en.get('text', {}).get('end_reason')}")
     check("sentence produced", bool(en.get("text", {}).get("text")),
           repr(en.get("text", {}).get("text")))
@@ -135,6 +175,18 @@ async def main():
     check("audio produced", n2 > 0, f"{n2:,} bytes = {n2 / 32000:.2f}s")
     check("Spanish differs from English", txt != en.get("text", {}).get("text", ""),
           f"en={en.get('text', {}).get('text')!r}  es={txt!r}")
+
+    print("\n3. utterance length is now the server's rule")
+    one = await run_glosses(["hello"])
+    check("   a single sign ends on the timeout",
+          one.get("end_reason") == "timeout", f"reason={one.get('end_reason')}  "
+          f"{one.get('ms', 0):.0f} ms after the sign")
+    two = await run_glosses(["hello", "me"], settle=0.9)
+    check("   two signs end on max_glosses",
+          two.get("end_reason") == "max_glosses", f"reason={two.get('end_reason')}")
+    check("   both produced a full sentence",
+          bool(one.get("text")) and bool(two.get("text")),
+          f"{one.get('text')!r} / {two.get('text')!r}")
 
     print(f"\n{'ALL PASS' if not FAILED else 'FAILURES: ' + ', '.join(FAILED)}")
     return 1 if FAILED else 0

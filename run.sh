@@ -15,10 +15,14 @@ cd "$(dirname "$0")"
 PY=.venv/bin/python
 [ -x "$PY" ] || { echo "no .venv here -- run from the project root"; exit 1; }
 
+# Portability: lsof is absent on Windows and not guaranteed on minimal Linux
+# images. Python is already a hard requirement here, so use it instead.
 for port in 8000 8080; do
-  if lsof -tiTCP:$port -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "!! port $port is already in use. Stop it first:"
-    echo "     kill \$(lsof -tiTCP:$port -sTCP:LISTEN)"
+  if $PY -c "import socket,sys; s=socket.socket();
+sys.exit(0 if s.connect_ex(('127.0.0.1',$port))==0 else 1)" 2>/dev/null; then
+    echo "!! port $port is already in use. Find and stop it:"
+    echo "     lsof -tiTCP:$port -sTCP:LISTEN      # macOS / Linux"
+    echo "     netstat -ano | findstr :$port        # Windows"
     exit 1
   fi
 done
@@ -56,7 +60,7 @@ echo "  Sign tab     http://127.0.0.1:8080/index.html     <- the demo"
 echo "  Speech tab   http://127.0.0.1:8080/speech.html"
 echo "  Settings     http://127.0.0.1:8080/settings.html"
 echo
-echo "  Sign tab: the camera starts by itself. Sign  hello me happy see you"
+echo "  Sign tab: the camera starts by itself. Just sign."
 echo "           Speak toggles the voice on/off; text appears either way."
 echo "  logs: backend/outputs/logs/{server,frontend}.log"
 echo
@@ -64,7 +68,7 @@ echo
 if [ "${1:-}" = "--harness" ]; then
   echo "[run] harness instead of the browser (Ctrl-C to stop everything)"
   $PY backend/scripts/harness_client.py --source webcam --mode B --seconds 90 \
-    --vocab hello,me,happy,see,you --expect 5 || true
+    || true
 else
   echo "[run] Ctrl-C to stop both."
   wait

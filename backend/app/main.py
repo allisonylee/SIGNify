@@ -149,34 +149,17 @@ async def ws_endpoint(ws: WebSocket):
             if kind == "config":
                 cfg.update({k: v for k, v in msg.items()
                             if k not in ("type", "voice")})
-                if "vocab" in msg and hasattr(rec, "labels"):
-                    # DEMO-CRITICAL. Restricting the classifier to the handful
-                    # of signs a demo actually uses turns a 255-way decision
-                    # into a 5-way one. Per-sign accuracy compounds across a
-                    # sentence, so this is worth far more than extra training.
-                    import torch as _t
-                    want = [w.strip() for w in (msg["vocab"] or []) if w.strip()]
-                    idx = [rec.labels.index(w) for w in want if w in rec.labels]
-                    unknown = [w for w in want if w not in rec.labels]
-                    # keep __REST__ selectable or the rest gate cannot fire
-                    if idx and rec.rest_label in rec.labels:
-                        ri = rec.labels.index(rec.rest_label)
-                        if ri not in idx:
-                            idx.append(ri)
-                    rec.allowed = _t.tensor(idx, device=rec.device) if idx else None
-                    print(f"[ws] vocab restricted to {len(idx)} classes: {want}"
-                          + (f"  UNKNOWN: {unknown}" if unknown else ""))
-                    await ws.send_json({"type": "state", "signing": False,
-                                        "vocab": want, "unknown": unknown})
                 if "expect" in msg:
-                    # DEMO MODE. End the utterance on COUNT rather than on the
-                    # clock: hold everything back until this many signs have
-                    # been committed, then send them to the LLM all at once.
-                    utt.expect = max(0, int(msg["expect"] or 0))
-                    print(f"[ws] expect = {utt.expect}"
-                          + (f" signs before the LLM fires (backstop "
-                             f"{utt.expect_backstop_s:.1f}s)" if utt.expect
-                             else " -> timeout endpointing"))
+                    # Utterance length is a SERVER decision now
+                    # (config.UTTERANCE_MAX_GLOSSES). A client asking to hold
+                    # back N signs would re-introduce the wait this was changed
+                    # to remove, so the value is read and ignored rather than
+                    # silently honoured.
+                    asked = max(0, int(msg["expect"] or 0))
+                    if asked:
+                        print(f"[ws] client asked for expect={asked}; IGNORED -- "
+                              f"utterances end at {utt.max_glosses} signs or "
+                              f"{utt.timeout_s:.1f}s of quiet")
                 if "voice" in msg:
                     # Clamped server-side: a client sending speed=50 is capped,
                     # not passed through (plan 15.5).
@@ -323,7 +306,7 @@ async def ws_endpoint(ws: WebSocket):
                     if prefetch is not None and not prefetch.done():
                         prefetch.cancel()
                     text = await llm.translate(glosses, cfg["output_language"])
-                    llm_source = "bypass" if should_bypass(glosses) else "gemini"
+                    llm_source = "gemini"
             except BaseException:                        # noqa: BLE001
                 await drop_stream(warm)                  # do not leak the socket
                 raise

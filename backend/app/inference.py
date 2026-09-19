@@ -154,7 +154,7 @@ class ModelRecognizer(Recognizer):
                  motion_threshold=None, min_sign_frames=8, quiet_seconds=None,
                  max_segment_s=None, min_confidence=None, min_margin=None,
                  debounce_s=None, rest_label="__REST__",
-                 rest_threshold=None, allowed=None):
+                 rest_threshold=None):
         motion_threshold = (config.REC_MOTION_THRESHOLD
                             if motion_threshold is None else motion_threshold)
         min_confidence = (config.REC_MIN_CONFIDENCE
@@ -188,7 +188,6 @@ class ModelRecognizer(Recognizer):
         if config.REC_IGNORE_REST:
             print("[rec] SIGN_IGNORE_REST=1 -- rest veto DISABLED (test only)")
             self.rest_idx = None
-        self.allowed = allowed
 
         self.state = SegmentState.IDLE
         self._seg_start = 0
@@ -208,10 +207,6 @@ class ModelRecognizer(Recognizer):
         x = torch.from_numpy(window[None].astype(np.float32)).to(self.device)
         with torch.no_grad():
             logits = self.model(x, self.lang)[0]
-        if self.allowed is not None:
-            mask = torch.full_like(logits, float("-inf"))
-            mask[self.allowed] = 0.0
-            logits = logits + mask
         p = torch.softmax(logits, -1).cpu().numpy()
         order = np.argsort(p)[::-1]
         return [(self.labels[i], float(p[i])) for i in order[:5]]
@@ -328,11 +323,14 @@ class UtteranceBuffer:
     # is set.
     EXPECT_BACKSTOP_S = 4.0
 
-    def __init__(self, timeout_s=None, max_glosses=12, max_duration_s=6.0,
+    def __init__(self, timeout_s=None, max_glosses=None, max_duration_s=6.0,
                  expect=0, expect_backstop_s=None):
         self.timeout_s = (config.UTTERANCE_TIMEOUT_S
                           if timeout_s is None else timeout_s)
-        self.max_glosses = max_glosses
+        # Not a safety valve any more -- this is the normal way an utterance
+        # ends. At the default of 2 it fires as soon as a second sign lands.
+        self.max_glosses = (config.UTTERANCE_MAX_GLOSSES
+                            if max_glosses is None else max_glosses)
         self.max_duration_s = max_duration_s
         # DEMO MODE. When >0 the utterance ends on COUNT, not on the clock:
         # flush the instant this many glosses are in hand. See flush_reason.

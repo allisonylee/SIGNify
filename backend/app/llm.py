@@ -17,9 +17,9 @@ hundred ms, which is the largest single term after pause detection. So:
   * output is capped -- latency scales with tokens produced, and we want one
     short sentence.
   * one client is reused for the process, so no per-request handshake.
-  * short utterances BYPASS the model entirely (see should_bypass): one or two
-    glosses do not need a language model, and skipping it saves the whole
-    round trip on the most common case.
+  * EVERY utterance goes through the model. Short ones used to bypass it to
+    save the round trip, but the prompt now guarantees a complete grammatical
+    sentence and nothing jarring, and a bypass cannot honour either.
 
 Falls back to a naive join whenever the key is missing or the call fails, so
 the speech path never breaks because of this layer.
@@ -31,6 +31,15 @@ import time
 
 from . import config
 
+# The last three rules exist because RECOGNITION IS IMPERFECT. A misread sign
+# used to surface as a conspicuous nonsense sentence; these tell the model to
+# land on the nearest ordinary reading instead, so a recognition error degrades
+# into something unremarkable rather than something the audience notices.
+#
+# Note the deliberate tension with "preserve the meaning": the instruction is to
+# stay faithful WHERE THE GLOSSES ARE CLEAR and to smooth only where they are
+# not. Stated as an absolute, "never invent" would force the literal nonsense
+# this is meant to avoid.
 SYSTEM = (
     "You convert sign-language glosses into one natural sentence.\n"
     "Glosses are UPPERCASE words recognised from a signer, in signing order. "
@@ -39,8 +48,22 @@ SYSTEM = (
     "Rules:\n"
     "- Reply with ONE sentence and nothing else. No preamble, no quotes, no "
     "explanation, no alternatives.\n"
-    "- Preserve the meaning. Do not invent content that is not in the glosses.\n"
-    "- If the glosses are a single word, just write that word naturally.\n"
+    "- ALWAYS reply with a complete, grammatically correct sentence. Never a "
+    "fragment, never a bare list of words.\n"
+    "- Preserve the meaning where the glosses are clear, and do not add new "
+    "facts to a sentence that already makes sense.\n"
+    "- Recognition is imperfect. When a gloss does not fit the others, treat it "
+    "as a misreading rather than as something the signer meant. Prefer the "
+    "nearest ordinary, everyday sentence those signs could have been. It is "
+    "better to leave one odd gloss out than to build a strange sentence around "
+    "it. Never produce a sentence a listener would find bizarre.\n"
+    "- Every sentence must be ordinary, calm and inoffensive. Nothing profane, "
+    "violent, sexual, hateful, political or otherwise controversial or "
+    "outrageous, even slightly, and even if the glosses point that way. If a "
+    "faithful reading would be any of those things, write a harmless everyday "
+    "sentence instead.\n"
+    "- If the glosses are a single word, write one short natural sentence using "
+    "that word.\n"
     "- Write in the requested language."
 )
 
@@ -61,10 +84,19 @@ def naive_text(glosses: list[str], lang: str = "en") -> str:
 
 def should_bypass(glosses: list[str]) -> bool:
     """
-    One or two glosses need no language model. Skipping the round trip here is
-    the single biggest latency win on the most common utterance (plan 8.3).
+    NOTHING BYPASSES THE MODEL ANY MORE. Kept so callers that report where a
+    sentence came from keep working.
+
+    It used to return True for one or two glosses, to skip a ~380 ms round trip
+    on what was then the commonest utterance: before `expect`, every recognised
+    sign flushed on its own. With `expect` set, a normal utterance is five
+    glosses and never qualified anyway -- the only way to reach this path became
+    the backstop firing after recognition FAILED, which is exactly when the
+    sentence most needs cleaning up. What the bypass produced instead
+    ("Me Happy.", "Potty Stink.") broke both guarantees the prompt now makes:
+    a complete grammatical sentence, and nothing jarring.
     """
-    return len(glosses) <= 2
+    return False
 
 
 class GlossTranslator:
@@ -104,10 +136,6 @@ class GlossTranslator:
     async def translate(self, glosses: list[str], lang: str = "en") -> str:
         if not glosses:
             return ""
-        if should_bypass(glosses):
-            self.bypassed += 1
-            self.last_ms = 0.0
-            return naive_text(glosses, lang)
         if not self.available:
             return naive_text(glosses, lang)
 

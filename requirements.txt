@@ -1,0 +1,33 @@
+# Runtime dependencies for the backend + the Python test harness.
+#
+#   python3.14 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+#
+# MEDIAPIPE IS PINNED ON PURPOSE. 1.0.x aborts with SIGABRT on macOS arm64 for
+# every vision task; 0.9.x fails silently. 0.10.35 is the version every model in
+# backend/models was trained and fine-tuned against, so changing it risks
+# train/serve skew as well as crashes.
+mediapipe==0.10.35
+
+# Landmark extraction + the harness's camera capture.
+opencv-contrib-python>=5.0
+numpy>=2.0
+
+# Model.
+torch>=2.6
+
+# Server.
+fastapi>=0.115
+uvicorn>=0.30
+websockets>=13
+python-multipart>=0.0.9
+
+# Gemini (glosses -> sentence).
+google-genai>=1.0
+
+# Training / dataset tooling only -- not needed just to run the demo.
+pandas>=2.2
+pyarrow>=17
+
+# Harness audio playback only.
+sounddevice>=0.5

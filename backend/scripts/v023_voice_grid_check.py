@@ -17,7 +17,7 @@ def check(n, ok, d=""):
 async def utter(voice):
     async with websockets.connect("ws://127.0.0.1:8000/ws", max_size=16*1024*1024) as ws:
         cfg = {"type": "config", "sign_language": "ase", "output_language": "en",
-               "mode": "speech", "vocab": V, "expect": 5}
+               "mode": "speech", "expect": 5}
         if voice is not None:
             cfg["voice"] = voice
         await ws.send(json.dumps(cfg))
