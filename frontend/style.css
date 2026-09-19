@@ -113,83 +113,6 @@ h3 {
   color: var(--muted);
 }
 
-h3 code {
-  font-size: 0.92em;
-}
-
-.page-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
-}
-
-.page-heading h3 {
-  margin-bottom: 0;
-}
-
-.session-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.session-controls label,
-.field {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--muted);
-}
-
-select,
-input[type="range"] {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-
-select {
-  min-width: 11rem;
-  padding: 0.55rem 0.75rem;
-}
-
-.hint {
-  margin: 0 0 1rem;
-  font-size: 0.92rem;
-  font-weight: 500;
-  color: var(--muted);
-}
-
-#voices-status {
-  margin-top: -0.55rem;
-}
-
-input[type="radio"],
-input[type="checkbox"] {
-  accent-color: var(--text);
-  width: 1.05rem;
-  height: 1.05rem;
-  margin-top: 0.2rem;
-  flex-shrink: 0;
-}
-
-.preset-group label {
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(28, 39, 43, 0.35);
-}
-
-.preset-group label:has(input:checked) {
-  border-color: var(--text);
-  background: rgba(212, 221, 226, 0.1);
-}
-
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
@@ -198,106 +121,33 @@ input[type="checkbox"] {
 }
 
 .stage,
-.output,
+.genText,
 .settings-card {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 
 .stage {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   min-height: 360px;
   background:
     linear-gradient(180deg, rgba(212, 221, 226, 0.05), transparent 42%),
     var(--surface);
   border: 1px dashed rgba(212, 221, 226, 0.28);
   color: var(--muted);
-}
-
-.stage video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: transparent;
-}
-
-.stage.mirrored video {
-  transform: scaleX(-1);
-}
-
-.stage-label {
-  position: relative;
-  z-index: 1;
-  margin: 0;
   font-size: 1.05rem;
   letter-spacing: 0.02em;
 }
 
-.stage:has(video[src]) .stage-label,
-.stage.live .stage-label {
-  display: none;
-}
-
-.output {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  min-height: 360px;
+.genText {
   margin: 0;
-  padding: 1.35rem 1.45rem;
+  min-height: 360px;
+  padding: 1.4rem 1.5rem;
   background: var(--panel);
   color: var(--panel-text);
-}
-
-.output-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-#signing-state,
-.mode-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.28rem 0.7rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  letter-spacing: 0.02em;
-}
-
-#signing-state {
-  background: rgba(45, 63, 71, 0.1);
-}
-
-#signing-state[data-state="signing"] {
-  background: var(--bg);
-  color: var(--text);
-}
-
-.mode-tag {
-  background: var(--bg);
-  color: var(--text);
-}
-
-.gloss {
-  margin: 0;
-  color: rgba(45, 63, 71, 0.62);
-  font-size: 0.98rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.sentence {
-  margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 500;
   line-height: 1.55;
 }
@@ -375,51 +225,6 @@ input[type="checkbox"] {
   background: var(--header);
 }
 
-.field + .field,
-.preset-group,
-details {
-  margin-top: 1rem;
-}
-
-.preset-group {
-  border: 0;
-  padding: 0;
-}
-
-.preset-group legend {
-  margin-bottom: 0.55rem;
-  color: var(--text);
-}
-
-.preset-group label {
-  display: flex;
-  gap: 0.7rem;
-  align-items: flex-start;
-  margin-bottom: 0.55rem;
-  font-weight: 500;
-  color: var(--muted);
-}
-
-.preset-group strong,
-.check-row strong {
-  display: block;
-  color: var(--text);
-}
-
-.check-row {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  margin-top: 1rem;
-  font-weight: 500;
-  color: var(--muted);
-}
-
-details summary {
-  cursor: pointer;
-  color: var(--text);
-}
-
 @media (max-width: 860px) {
   .header-inner {
     flex-direction: column;
@@ -437,12 +242,7 @@ details summary {
   }
 
   .stage,
-  .output {
+  .genText {
     min-height: 240px;
-  }
-
-  .page-heading {
-    flex-direction: column;
-    align-items: flex-start;
   }
 }

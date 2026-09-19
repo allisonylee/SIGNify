@@ -4,66 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Signagram · Text</title>
+    <title>Signagram</title>
     <link rel="stylesheet" href="style.css">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=ADLaM+Display&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
   </head>
-  <body data-mode="text">
+  <body>
     <header>
       <div class="header-inner">
-        <h1><a href="./index.html">Signagram</a></h1>
-        <nav class="menu" aria-label="Primary">
-          <ul>
-            <li><a class="active" href="./index.html">Text</a></li>
-            <li><a href="./speech.html">Speech</a></li>
-            <li><a href="./settings.html">Settings</a></li>
-          </ul>
-        </nav>
+      <h1><a href="./index.html">Signagram</a></h1>
+      <nav class="menu" aria-label="Primary">
+        <ul>
+          <li><a class="active" href="./index.html">Text</a></li>
+          <li><a href="./speech.html">Speech</a></li>
+          <li><a href="./settings.html">Settings</a></li>
+        </ul>
+      </nav>
       </div>
     </header>
 
     <main>
-      <div class="page-heading">
-        <div>
-          <h2>Sign to Text</h2>
-          <h3>Isolated signs appear as gloss immediately, then a fluent sentence.</h3>
-        </div>
-        <div class="session-controls">
-          <label>
-            Sign language
-            <select data-sign-language>
-              <option value="ase">ASL</option>
-              <option value="tsm">Turkish Sign Language</option>
-            </select>
-          </label>
-          <label>
-            Spoken output
-            <select data-output-language>
-              <option value="en">English</option>
-              <option value="es">Spanish</option>
-              <option value="tr">Turkish</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
+      <h2>Sign to Text</h2>
+      <h3>Record live translations</h3>
       <section class="workspace" aria-label="Live translation workspace">
-        <div class="stage">
-          <video id="camera" playsinline muted autoplay></video>
-          <p class="stage-label">Camera feed</p>
-        </div>
-        <aside class="output" aria-live="polite">
-          <div class="output-meta">
-            <span id="signing-state" data-state="idle">Idle</span>
-            <span class="mode-tag">Text mode</span>
-          </div>
-          <p id="partial-gloss" class="gloss">Waiting for a sign…</p>
-          <p id="fluent-text" class="sentence">The sentence will replace the gloss here.</p>
-        </aside>
+        <div class="stage">Camera feed</div>
+        <p class="genText">The translation will appear here...</p>
       </section>
     </main>
-    <script src="./page.js" defer></script>
   </body>
 </html>
