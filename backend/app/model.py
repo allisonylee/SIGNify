@@ -80,6 +80,35 @@ class SignClassifier(nn.Module):
             nn.Linear(self.encoder.out_dim * 2, n_classes),
         ).to(dev)
 
+    def expand_head(self, lang: str, n_new: int):
+        """
+        Add `n_new` output units to an existing head, KEEPING what it learned.
+
+        Needed to teach the model words that are not among GISLR's 250. A fresh
+        head would throw away every class the model already knows; this copies
+        the trained weights into the enlarged layer and initialises only the new
+        rows, so existing signs behave exactly as before at initialisation.
+
+        The new classes start with near-zero logits, which is correct: the model
+        has no evidence for them until it sees your samples.
+        """
+        head = self.heads[lang]
+        old_linear = head[-1]
+        assert isinstance(old_linear, nn.Linear), "head must end in Linear"
+        n_old, in_f = old_linear.out_features, old_linear.in_features
+        dev = old_linear.weight.device
+
+        new_linear = nn.Linear(in_f, n_old + n_new).to(dev)
+        with torch.no_grad():
+            # preserve every existing class exactly
+            new_linear.weight[:n_old] = old_linear.weight
+            new_linear.bias[:n_old] = old_linear.bias
+            # small init for the new ones -- no evidence yet
+            nn.init.normal_(new_linear.weight[n_old:], std=0.01)
+            nn.init.constant_(new_linear.bias[n_old:], 0.0)
+        head[-1] = new_linear
+        return n_old + n_new
+
     def freeze_encoder(self, frozen=True):
         """Stage 5: freeze, then train only the new head. 2-3k samples would
         overfit a 2M-param model instantly if trained end to end."""

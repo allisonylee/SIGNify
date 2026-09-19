@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -61,6 +62,8 @@ def main():
     ap.add_argument("--lang", default="ase")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--with-rest", action="store_true",
+                    help="include recorded __REST__ windows as a class")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -69,6 +72,14 @@ def main():
 
     print("loading features ...", flush=True)
     rows = load_rows()
+    if args.with_rest:
+        from backend.training.dataset import load_rest_rows
+        rest = load_rest_rows()
+        if rest.empty:
+            sys.exit("--with-rest but no rest windows; "
+                     "run scripts/v010_record_rest.py first")
+        print(f"including {len(rest):,} recorded __REST__ windows")
+        rows = pd.concat([rows, rest], ignore_index=True)
     if rows.empty:
         sys.exit("no features on disk -- run backend.training.download first")
     labels = sorted(rows.sign.unique())
