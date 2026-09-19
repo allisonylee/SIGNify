@@ -26,6 +26,7 @@ backend/outputs/
 # encoder is NOT -- it costs an hour of training, so it stays tracked.
 backend/models/*
 !backend/models/encoder_ase.pt
+!backend/models/encoder_ins.pt
 
 izzie-rules.txt
 .cursor
