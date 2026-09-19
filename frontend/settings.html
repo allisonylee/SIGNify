@@ -4,9 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Signagram</title>
+    <title>Signagram · Settings</title>
     <link rel="stylesheet" href="style.css">
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=ADLaM+Display&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
@@ -14,56 +13,108 @@
   <body>
     <header>
       <div class="header-inner">
-      <h1><a href="./index.html">Signagram</a></h1>
-      <nav class="menu" aria-label="Primary">
-        <ul>
-          <li><a href="./index.html">Text</a></li>
-          <li><a href="./speech.html">Speech</a></li>
-          <li><a class="active" href="./settings.html">Settings</a></li>
-        </ul>
-      </nav>
+        <h1><a href="./index.html">Signagram</a></h1>
+        <nav class="menu" aria-label="Primary">
+          <ul>
+            <li><a href="./index.html">Text</a></li>
+            <li><a href="./speech.html">Speech</a></li>
+            <li><a class="active" href="./settings.html">Settings</a></li>
+          </ul>
+        </nav>
       </div>
     </header>
 
     <main>
       <h2>Settings</h2>
-      <h3>Preferences for live translation</h3>
-      <section class="settings-grid" aria-label="Settings">
+      <h3>These values go out in the WebSocket <code>config</code> message. Changing them should not drop the connection.</h3>
+
+      <form id="settings-form" class="settings-grid">
+        <article class="settings-card">
+          <h3>Languages</h3>
+          <label class="field">
+            <span>Sign language</span>
+            <select name="sign_language">
+              <option value="ase">ASL</option>
+              <option value="tsm">Turkish Sign Language</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Spoken output</span>
+            <select name="output_language">
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+              <option value="tr">Turkish</option>
+            </select>
+          </label>
+        </article>
+
+        <article class="settings-card">
+          <h3>Voice</h3>
+          <p class="hint">Age, gender, and accent come from which voice you pick. There is no pitch slider.</p>
+          <p class="hint" id="voices-status"></p>
+          <label class="field">
+            <span>Voice</span>
+            <select name="voice_id">
+              <option value="">Default voice</option>
+              <option value="21m00Tcm4TlvDq8ikWAM">Rachel · young · female · american</option>
+            </select>
+          </label>
+          <fieldset class="preset-group">
+            <legend>Style</legend>
+            <label>
+              <input type="radio" name="preset" value="calm">
+              <span>
+                <strong>Calm</strong>
+                Steadier, less emotional range
+              </span>
+            </label>
+            <label>
+              <input type="radio" name="preset" value="natural" checked>
+              <span>
+                <strong>Natural</strong>
+                Default. No extra latency
+              </span>
+            </label>
+            <label>
+              <input type="radio" name="preset" value="expressive">
+              <span>
+                <strong>Expressive</strong>
+                More character — slower
+              </span>
+            </label>
+          </fieldset>
+          <label class="field">
+            <span>Speed <em id="speed-value">1.00</em></span>
+            <input type="range" name="speed" min="0.7" max="1.2" step="0.05" value="1">
+          </label>
+          <details>
+            <summary>Advanced</summary>
+            <label class="field">
+              <span>Similarity boost</span>
+              <input type="range" name="similarity_boost" min="0" max="1" step="0.05" value="0.8">
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="use_speaker_boost">
+              <span>
+                <strong>Speaker boost</strong>
+                Sharper voice, adds about 200–500 ms
+              </span>
+            </label>
+          </details>
+        </article>
+
         <article class="settings-card">
           <h3>Camera</h3>
-          <div class="settings-row">
-            <div>
-              <strong>Show camera preview</strong>
-              <span>Keep the live feed visible while translating</span>
-            </div>
-            <div class="toggle on" aria-hidden="true"></div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <strong>Mirror video</strong>
-              <span>Flip the preview so signing matches your view</span>
-            </div>
-            <div class="toggle" aria-hidden="true"></div>
-          </div>
+          <label class="check-row">
+            <input type="checkbox" name="mirror_preview" checked>
+            <span>
+              <strong>Mirror preview</strong>
+              Flips only the on-screen video. Landmarks sent to the backend stay un-mirrored.
+            </span>
+          </label>
         </article>
-        <article class="settings-card">
-          <h3>Output</h3>
-          <div class="settings-row">
-            <div>
-              <strong>Text captions</strong>
-              <span>Show translated words beside the camera</span>
-            </div>
-            <div class="toggle on" aria-hidden="true"></div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <strong>Spoken playback</strong>
-              <span>Read translations aloud on the Speech page</span>
-            </div>
-            <div class="toggle on" aria-hidden="true"></div>
-          </div>
-        </article>
-      </section>
+      </form>
     </main>
+    <script src="./page.js" defer></script>
   </body>
 </html>
