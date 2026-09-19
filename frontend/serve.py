@@ -103,15 +103,32 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
 
+# NOT 8000. The sign-language backend (backend/app/main.py, uvicorn) owns 8000,
+# and when both wanted it this server lost the race and never started -- which
+# showed up in the browser as "token request failed (404)", because the page was
+# then being served by something else (VS Code Live Preview) that has no
+# /api/scribe-token route. The two servers must not collide.
+DEFAULT_PORT = 8080
+
+
 def main() -> None:
-    port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer(
-        ("127.0.0.1", port), partial(Handler, directory=str(FRONTEND_DIR)))
+    port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
+    try:
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", port), partial(Handler, directory=str(FRONTEND_DIR)))
+    except OSError as e:
+        # A bare traceback here is what let the collision go unnoticed.
+        print(f"[serve] cannot bind 127.0.0.1:{port} -- {e}")
+        print(f"[serve] something else is already on that port. Free it, or run")
+        print(f"[serve]   PORT=8081 python frontend/serve.py")
+        raise SystemExit(1)
 
     found = "found" if read_api_key() else "MISSING (see frontend/README.md)"
     print(f"[serve] root           : {FRONTEND_DIR}")
     print(f"[serve] elevenlabs key : {found}")
     print(f"[serve] open           : http://127.0.0.1:{port}/speech.html")
+    print(f"[serve] NOTE           : open it from HERE, not from VS Code Live "
+          f"Preview -- a static server has no {TOKEN_PATH}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

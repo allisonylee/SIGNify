@@ -14,7 +14,15 @@ Static pages -- no build step, no `package.json`. Plain HTML, CSS, and ES module
 python frontend/serve.py
 ```
 
-Then open <http://127.0.0.1:8000/speech.html>.
+Then open <http://127.0.0.1:8080/speech.html>.
+
+**Open it from `serve.py`, not from VS Code Live Preview or any other static
+server.** `speech.js` posts to the relative path `/api/scribe-token`, which only
+`serve.py` implements, so a static server answers it with a 404 and the Listen
+button reports `token request failed (404)`. Port 8080, not 8000: the
+sign-language backend (`backend/app/main.py`) owns 8000, and two servers
+fighting over one port is what caused that 404 in the first place. Override with
+`PORT=8081 python frontend/serve.py` if 8080 is taken.
 
 Opening the files directly off disk will not work: `getUserMedia` requires a
 secure context, and `file://` is not one, so the microphone is unavailable.
@@ -106,7 +114,7 @@ explains why.
 
 ### Diagnosing translation failures
 
-Open <http://127.0.0.1:8000/translator-check.html> with DevTools open.
+Open <http://127.0.0.1:8080/translator-check.html> with DevTools open.
 
 It probes every direction the app can ask for and shows whether `create()` really
 works, because `availability()` cannot tell you. Chrome reports *every* pair as
