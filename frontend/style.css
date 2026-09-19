@@ -402,6 +402,12 @@ input[type="range"] {
   background: rgba(212, 221, 226, 0.32);
 }
 
+/* .note's negative top margin tightens it under a page subhead. Here it sits
+   below the last slider instead, where that pull lands on the tick marks. */
+.settings-card .note {
+  margin: 0.9rem 0 0;
+}
+
 @media (min-width: 861px) {
   .field {
     grid-template-columns: minmax(0, 210px) minmax(0, 1fr);
