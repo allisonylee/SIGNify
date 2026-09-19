@@ -432,3 +432,54 @@ input[type="range"] {
     min-height: 240px;
   }
 }
+/* ---- sign page: live camera stage ---------------------------------------
+   sign.js replaces the "Camera feed" placeholder inside .stage with a <video>
+   and two status lines. .stage is a centred flex row by default, so it is
+   restated as a column here; everything else is scoped to .sign-* so the
+   mockup styling is untouched when the camera is off. */
+
+.stage.sign-stage {
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  overflow: hidden;
+}
+
+.sign-video {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: calc(var(--radius) - 6px);
+  background: #000;
+  object-fit: cover;
+  /* MIRRORED FOR DISPLAY ONLY. sign.js draws the un-mirrored frame to its
+     canvas; this flip never reaches the wire. Signing at a mirror image of
+     yourself is what people expect. */
+  transform: scaleX(-1);
+}
+
+.sign-glosses {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--panel-text, #e9eef1);
+}
+
+.sign-status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* No running caption under the camera. The element survives only to carry a
+   camera failure, so while it is empty it must take up no room at all --
+   :empty plus display:none, because an empty <p> still occupies a line box. */
+.sign-status:empty {
+  display: none;
+}
+
+.stage.live {
+  border-style: solid;
+}

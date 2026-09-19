@@ -98,6 +98,17 @@ REC_REST_THRESHOLD = float(os.environ.get("SIGN_REST_THRESHOLD", "0.75"))
 # "rest"   -- segment using the model's P(__REST__)   (default; see
 #             RestGatedRecognizer for why motion gating was abandoned)
 # "motion" -- the old motion-energy gate, kept for comparison
+# HOW LONG AFTER A SIGN ENDS BEFORE ITS WORD APPEARS.
+# RestGatedRecognizer scores the window every `stride` frames and needs
+# `exit_confirm` consecutive rest verdicts to close a sign. At the measured
+# 24 fps that is stride/24 * exit_confirm seconds of pure latency on EVERY sign:
+#   stride 3, confirm 2 -> ~250 ms   (default; what the demo was tuned at)
+#   stride 2, confirm 2 -> ~167 ms   (faster, but a brief mid-sign pause is
+#                                     more likely to be read as the end)
+# Exposed so this can be A/B'd against real signing without editing code.
+REC_STRIDE = int(os.environ.get("SIGN_STRIDE", "3"))
+REC_EXIT_CONFIRM = int(os.environ.get("SIGN_EXIT_CONFIRM", "2"))
+
 REC_GATE = os.environ.get("SIGN_GATE", "rest")
 # TEST ONLY. The __REST__ veto is categorical, so no confidence threshold can
 # bypass it -- which makes the downstream chain (utterance -> LLM -> TTS)

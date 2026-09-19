@@ -52,8 +52,17 @@ class VoiceSettings:
     @classmethod
     def from_client(cls, d: dict | None) -> "VoiceSettings":
         d = d or {}
+        # pitch and age are SLIDER POSITIONS (1..5), not audio parameters. There
+        # is no pitch knob in the ElevenLabs API -- pitch comes from which voice
+        # you pick -- so they are resolved against the pre-baked grid to a
+        # voice_id. A dict lookup, no network, nothing added to TTS latency.
+        vid = d.get("voice_id")
+        if not vid and ("pitch" in d or "age" in d):
+            from .voices import resolve
+            vid, how = resolve(d.get("pitch", 3), d.get("age", 3))
+            print(f"[voice] pitch={d.get('pitch')} age={d.get('age')} -> {how}")
         return cls(
-            voice_id=str(d.get("voice_id") or config.ELEVENLABS_VOICE_ID),
+            voice_id=str(vid or config.ELEVENLABS_VOICE_ID),
             stability=_clamp(d.get("stability", 0.5), 0.0, 1.0, 0.5),
             similarity_boost=_clamp(d.get("similarity_boost", 0.8), 0.0, 1.0, 0.8),
             style=_clamp(d.get("style", 0.0), 0.0, 1.0, 0.0),
@@ -85,9 +94,19 @@ class TTSProvider:
     name = "base"
 
     async def synthesize(self, text: str, lang: str = "en",
-                         voice: VoiceSettings | None = None) -> bytes:
+                         voice: VoiceSettings | None = None,
+                         stream=None) -> bytes:
         """-> raw PCM s16le mono @ config.AUDIO_SAMPLE_RATE."""
         raise NotImplementedError
+
+    async def open_stream(self, lang: str = "en",
+                          voice: VoiceSettings | None = None):
+        """
+        Optional. Pay the connection cost BEFORE the text exists, so it overlaps
+        the LLM instead of queueing behind it. A provider with no connection to
+        make returns None, and `synthesize` then behaves exactly as before.
+        """
+        return None
 
     async def list_voices(self) -> list[dict]:
         return []
@@ -99,7 +118,8 @@ class MacSayTTS(TTSProvider):
     VOICES = {"en": "Samantha", "es": "Monica", "fr": "Thomas", "de": "Anna"}
 
     async def synthesize(self, text: str, lang: str = "en",
-                         voice: VoiceSettings | None = None) -> bytes:
+                         voice: VoiceSettings | None = None,
+                         stream=None) -> bytes:
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "a.wav"
             cmd = ["say", "-o", str(out),
@@ -173,18 +193,52 @@ class ElevenLabsTTS(TTSProvider):
             }]
         return self._voices_cache
 
-    async def synthesize(self, text: str, lang: str = "en",
-                         voice: VoiceSettings | None = None) -> bytes:
-        import websockets
-
-        voice = voice or VoiceSettings(voice_id=self.voice_id)
+    def _url(self, lang: str, voice: VoiceSettings) -> str:
         vid = voice.voice_id or self.voice_id
         url = (f"wss://api.elevenlabs.io/v1/text-to-speech/{vid}"
                f"/stream-input?model_id={self.model}"
                f"&output_format=pcm_{config.AUDIO_SAMPLE_RATE}")
+        # FORCE the language instead of letting Flash v2.5 guess it from the
+        # text. `lang` was accepted and then ignored here, so a Spanish sentence
+        # was read with whatever phonetics the model inferred. Measured on
+        # "Hola, me alegra verte": 38,638 bytes of PCM without the parameter,
+        # 49,040 with it -- the same words, pronounced differently.
+        # The endpoint documents language_code as a query parameter, and
+        # eleven_flash_v2_5 accepts it for en/es/hi (tested 2026-09-19).
+        if lang:
+            url += f"&language_code={lang}"
+        return url
+
+    async def open_stream(self, lang: str = "en",
+                          voice: VoiceSettings | None = None):
+        """
+        Connect now, speak later. MEASURED: the handshake to ElevenLabs costs
+        88.8 ms (p50 of 5) -- 38% of a 235 ms synthesize() -- and it does not
+        depend on the text. Kicked off the moment the utterance ends, it
+        completes while Gemini is still writing, so by the time there IS text
+        the socket is already open.
+        """
+        import websockets
+        voice = voice or VoiceSettings(voice_id=self.voice_id)
+        try:
+            return await websockets.connect(
+                self._url(lang, voice),
+                additional_headers={"xi-api-key": self.api_key})
+        except Exception as e:                       # noqa: BLE001
+            print(f"[tts] prewarm failed ({e}); connecting inline instead")
+            return None
+
+    async def synthesize(self, text: str, lang: str = "en",
+                         voice: VoiceSettings | None = None,
+                         stream=None) -> bytes:
+        import websockets
+
+        voice = voice or VoiceSettings(voice_id=self.voice_id)
         chunks: list[bytes] = []
-        async with websockets.connect(
-                url, additional_headers={"xi-api-key": self.api_key}) as ws:
+        ws = stream or await websockets.connect(
+            self._url(lang, voice),
+            additional_headers={"xi-api-key": self.api_key})
+        try:
             # auto_mode lets the model decide when to commit, which is the
             # right tradeoff for whole sentences.
             await ws.send(json.dumps({
@@ -201,6 +255,9 @@ class ElevenLabsTTS(TTSProvider):
                     chunks.append(base64.b64decode(msg["audio"]))
                 if msg.get("isFinal"):
                     break
+        finally:
+            # Ours to close whether we opened it or inherited it prewarmed.
+            await ws.close()
         return b"".join(chunks)
 
 

@@ -464,10 +464,15 @@ class RestGatedRecognizer(ModelRecognizer):
     Cost: one classification per `stride` frames (~15 ms each).
     """
 
-    def __init__(self, *a, stride=3, enter_rest_below=0.55, enter_conf=0.18,
-                 exit_rest_above=0.70, exit_confirm=2, max_sign_s=3.0, **kw):
+    def __init__(self, *a, stride=None, enter_rest_below=0.55, enter_conf=0.18,
+                 exit_rest_above=0.70, exit_confirm=None, max_sign_s=3.0, **kw):
+        stride = config.REC_STRIDE if stride is None else stride
+        exit_confirm = (config.REC_EXIT_CONFIRM if exit_confirm is None
+                        else exit_confirm)
         super().__init__(*a, **kw)
         self.stride = stride
+        self.last_seg_s = 0.0
+        self.last_exit = ""
         self.enter_rest_below = enter_rest_below
         self.enter_conf = enter_conf
         self.exit_rest_above = exit_rest_above
@@ -524,6 +529,16 @@ class RestGatedRecognizer(ModelRecognizer):
         if self._rest_streak < self.exit_confirm and not overran:
             return None
 
+        # WHY THE WORD TOOK AS LONG AS IT DID.
+        # A segment closes either because rest won `exit_confirm` ticks in a row
+        # -- fast, ~stride*confirm/fps after you stop -- or because it hit
+        # max_sign_s. "overran" means rest NEVER became convincing, so the word
+        # could not appear until the 3 s cap expired. That is the difference
+        # between a quarter second and three seconds, and from the outside both
+        # just look like "it is slow".
+        self.last_seg_s = now - self._seg_start_t
+        self.last_exit = "overran" if (overran and self._rest_streak
+                                       < self.exit_confirm) else "rest"
         self.state = SegmentState.IDLE
         best = self._best
         self._best, self._rest_streak = None, 0

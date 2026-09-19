@@ -49,7 +49,7 @@
           <label class="field">
             <span>Speech Pitch</span>
             <div class="slider">
-              <input type="range" min="1" max="5" step="1" value="3">
+              <input type="range" min="1" max="5" step="1" value="3" id="voicePitch">
               <div class="slider-ticks" aria-hidden="true">
                 <span></span>
                 <span></span>
@@ -59,6 +59,20 @@
               </div>
             </div>
           </label>
+          <label class="field">
+            <span>Voice Age</span>
+            <div class="slider">
+              <input type="range" min="1" max="5" step="1" value="3" id="voiceAge">
+              <div class="slider-ticks" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </label>
+          <p class="note" id="voiceNote" role="status"></p>
         </article>
       </section>
     </main>

@@ -25,6 +25,26 @@ from .tts import get_provider
 STATE: dict = {}
 
 
+async def drop_stream(task):
+    """
+    Abandon a prewarmed TTS socket nobody ended up using. Without this, an
+    exception between opening it and handing it to synthesize() leaks an open
+    websocket to ElevenLabs.
+    """
+    if task is None:
+        return
+    task.cancel()
+    try:
+        stream = await task
+    except BaseException:                            # noqa: BLE001
+        return
+    if stream is not None:
+        try:
+            await stream.close()
+        except Exception:                            # noqa: BLE001
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     STATE["tts"] = get_provider()
@@ -247,6 +267,13 @@ async def ws_endpoint(ws: WebSocket):
                     # TTS work. The screen keeps up; only audio waits.
                     utt.add(result.gloss[0], now)
                     last_gloss_t = now
+                    seg = getattr(rec, "last_seg_s", 0.0)
+                    how = getattr(rec, "last_exit", "")
+                    if how:
+                        print(f"[ws] t={now:7.2f}   segment {seg:.2f}s, closed by "
+                              f"{how}"
+                              + ("  <- SLOW: never saw a rest pose, waited out "
+                                 "the max_sign_s cap" if how == "overran" else ""))
                     await ws.send_json({"type": "partial",
                                         "gloss": list(utt.glosses),
                                         "conf": result.confidence})
@@ -278,18 +305,28 @@ async def ws_endpoint(ws: WebSocket):
 
             glosses = utt.take()
             t_utt = time.perf_counter()
-            if prefetch is not None and prefetch_for == glosses:
-                try:
-                    text = await prefetch          # usually already finished
-                    llm_source = "prefetch"
-                except asyncio.CancelledError:
+            # OVERLAP. The ElevenLabs handshake costs ~89 ms and needs no text,
+            # so it runs WHILE Gemini writes the sentence instead of after.
+            # Started here, before the LLM is awaited, it is finished by the
+            # time synthesize() wants it.
+            warm = (asyncio.create_task(tts.open_stream(cfg["output_language"], voice))
+                    if cfg.get("mode") == "speech" else None)
+            try:
+                if prefetch is not None and prefetch_for == glosses:
+                    try:
+                        text = await prefetch      # usually already finished
+                        llm_source = "prefetch"
+                    except asyncio.CancelledError:
+                        text = await llm.translate(glosses, cfg["output_language"])
+                        llm_source = "gemini"
+                else:
+                    if prefetch is not None and not prefetch.done():
+                        prefetch.cancel()
                     text = await llm.translate(glosses, cfg["output_language"])
-                    llm_source = "gemini"
-            else:
-                if prefetch is not None and not prefetch.done():
-                    prefetch.cancel()
-                text = await llm.translate(glosses, cfg["output_language"])
-                llm_source = "bypass" if should_bypass(glosses) else "gemini"
+                    llm_source = "bypass" if should_bypass(glosses) else "gemini"
+            except BaseException:                        # noqa: BLE001
+                await drop_stream(warm)                  # do not leak the socket
+                raise
             prefetch, prefetch_for = None, []
             llm_ms = (time.perf_counter() - t_utt) * 1000
             await ws.send_json({"type": "text", "text": text,
@@ -301,8 +338,16 @@ async def ws_endpoint(ws: WebSocket):
 
             if cfg.get("mode") == "speech":
                 t1 = time.perf_counter()
+                stream = None
+                if warm is not None:
+                    try:
+                        stream = await warm
+                    except Exception:                        # noqa: BLE001
+                        stream = None                        # connect inline
+                    warm = None
                 try:
-                    pcm = await tts.synthesize(text, cfg["output_language"], voice)
+                    pcm = await tts.synthesize(text, cfg["output_language"],
+                                               voice, stream=stream)
                 except Exception as e:                       # noqa: BLE001
                     await ws.send_json({"type": "error", "detail": f"tts: {e}"})
                     continue
