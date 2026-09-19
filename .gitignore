@@ -1,3 +1,31 @@
 claude/
+.venv/
+.env
+.DS_Store
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------------------
+# Derived data -- regenerable, never committed.
+#
+#   backend/data/gislr/features/       94,477 .npy, 1.8 GB
+#   backend/data/gislr/features_all.npy          1.8 GB
+#
+# Rebuild from the competition archive in ~4 minutes:
+#   python -m backend.training.convert_fast --archive ~/Downloads/asl-signs.zip
+#   python -m backend.training.consolidate
+# Or, with no local archive, stream it by HTTP range:
+#   python -m backend.training.fetch_remote --signs 250 --per-sign 60
+# ---------------------------------------------------------------------------
+backend/data/
+
+# Generated verification artifacts (plots, reports, logs)
+backend/outputs/
+
+# MediaPipe bundles are re-downloadable from Google (~35 MB); the trained
+# encoder is NOT -- it costs an hour of training, so it stays tracked.
+backend/models/*
+!backend/models/encoder_ase.pt
+
 izzie-rules.txt
 .cursor

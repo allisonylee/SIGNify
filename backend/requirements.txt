@@ -1,0 +1,17 @@
+# Pinned for the sign-language backend.
+#
+# mediapipe: DO NOT upgrade to 1.0.x. On macOS arm64 the 1.0.x wheels abort
+# (SIGABRT) in every vision task -- their TFLite calculators request a Metal
+# graph service that is never registered. 0.10.35 works on the CPU delegate.
+# Evidence: backend/outputs/stage0_api_matrix.txt
+mediapipe==0.10.35
+
+# Pulled in by mediapipe, pinned to what Stage 0 was verified against.
+numpy==2.5.3
+opencv-contrib-python==5.0.0.93
+
+# Backend
+fastapi==0.141.1
+uvicorn==0.53.0
+websockets==17.1
+python-dotenv==1.2.3
