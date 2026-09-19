@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -19,21 +21,30 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from backend.trainingISL.extract_video import extract_clip, rest_window_from_padding
 from backend.trainingISL.paths import (
     DATA, FEAT, HF_BASE, INDEX, LABELS, MANIFEST, META, REST_SIGN, TMP,
     ZENODO_API, abort_if_low_disk, ensure_dirs, free_gb,
 )
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from backend.app.landmarks import HolisticExtractor  # noqa: E402
 
-
-def _urlretrieve(url: str, dest: Path):
+def _urlretrieve(url: str, dest: Path, attempts=8):
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    urllib.request.urlretrieve(url, tmp)
-    tmp.replace(dest)
+    last: Exception | None = None
+    for i in range(1, attempts + 1):
+        try:
+            if tmp.exists():
+                tmp.unlink()
+            urllib.request.urlretrieve(url, tmp)
+            tmp.replace(dest)
+            return
+        except (OSError, urllib.error.URLError) as e:
+            last = e
+            wait = min(90, 5 * i)
+            print(f"    download retry {i}/{attempts} after {e!r}  sleep {wait}s",
+                  flush=True)
+            time.sleep(wait)
+    raise last
 
 
 def fetch_metadata() -> pd.DataFrame:
@@ -138,6 +149,37 @@ def load_done() -> set[int]:
     return done
 
 
+def load_failed() -> set[int]:
+    failed = set()
+    if not MANIFEST.exists():
+        return failed
+    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("ok") is False:
+            failed.add(int(row["sequence_id"]))
+    return failed
+
+
+def zips_fully_consumed() -> set[str]:
+    """Skip zips that already finished. Keep the last successful zip so a
+    mid-zip crash can resume without re-downloading earlier category parts.
+    """
+    keys: list[str] = []
+    if not MANIFEST.exists():
+        return set()
+    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("ok") and row.get("zip"):
+            keys.append(row["zip"])
+    if not keys:
+        return set()
+    return set(keys) - {keys[-1]}
+
+
 def append_manifest(row: dict):
     with MANIFEST.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
@@ -156,13 +198,40 @@ def index_zip_members(z: zipfile.ZipFile) -> dict[tuple[int, str], str]:
     return out
 
 
-def process_zip(zinfo: dict, index: pd.DataFrame, extractor: HolisticExtractor,
-                remaining: int | None) -> int:
+def resolve_zip_path(key: str, zip_dirs: list[Path]) -> Path | None:
+    for d in zip_dirs:
+        p = d / key
+        if p.exists() and p.stat().st_size > 0:
+            return p
+    return None
+
+
+def extract_clip_subprocess(vpath: Path, sequence_id: int) -> dict:
+    """Child process so a MediaPipe abort cannot kill the zip loop."""
+    out = FEAT / f"{int(sequence_id)}.npy"
+    rest_out = FEAT / f"{1_000_000 + int(sequence_id)}.npy"
+    r = subprocess.run(
+        [sys.executable, "-m", "backend.trainingISL.extract_one",
+         str(vpath), str(out), str(int(sequence_id) * 1_000_000), str(rest_out)],
+        cwd=str(Path(__file__).resolve().parents[2]),
+        capture_output=True, text=True, timeout=240,
+    )
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout or "")[-400:].replace("\n", " ")
+        raise RuntimeError(f"extract_one exit {r.returncode}: {tail}")
+    lines = [ln for ln in (r.stdout or "").splitlines() if ln.strip().startswith("{")]
+    if not lines:
+        raise RuntimeError("extract_one produced no json")
+    return json.loads(lines[-1])
+
+
+def process_zip(zinfo: dict, index: pd.DataFrame,
+                remaining: int | None, zip_dirs: list[Path], keep_zips: bool) -> int:
     key = zinfo["key"]
     cat = zip_category(key)
     want = index[index.category.str.replace(" ", "_", regex=False) == cat.replace(" ", "_")]
-    done = load_done()
-    want = want[~want.sequence_id.isin(done)]
+    skip = load_done() | load_failed()
+    want = want[~want.sequence_id.isin(skip)]
     if remaining is not None:
         want = want.head(remaining)
     if want.empty:
@@ -170,13 +239,18 @@ def process_zip(zinfo: dict, index: pd.DataFrame, extractor: HolisticExtractor,
         return 0
 
     abort_if_low_disk()
-    zip_path = TMP / key
+    zip_path = resolve_zip_path(key, zip_dirs) or (TMP / key)
+    downloaded = False
     if not zip_path.exists():
         url = zinfo["links"]["self"]
         print(f"  download {key} ({zinfo['size']/1e9:.2f} GB) ...", flush=True)
         t0 = time.perf_counter()
         _urlretrieve(url, zip_path)
+        downloaded = True
         print(f"    done in {time.perf_counter()-t0:.0f}s  free={free_gb():.2f} GB",
+              flush=True)
+    else:
+        print(f"  local {key} ({zip_path.stat().st_size/1e9:.2f} GB) {zip_path}",
               flush=True)
 
     n_ok = 0
@@ -194,15 +268,10 @@ def process_zip(zinfo: dict, index: pd.DataFrame, extractor: HolisticExtractor,
             try:
                 with z.open(member) as src, vpath.open("wb") as dst:
                     dst.write(src.read())
-                info = extract_clip(
-                    vpath, extractor,
-                    timestamp_base_ms=int(rec.sequence_id) * 1_000_000)
-                np.save(FEAT / f"{int(rec.sequence_id)}.npy", info["window"])
-                rest = rest_window_from_padding(info["raw"])
+                info = extract_clip_subprocess(vpath, int(rec.sequence_id))
                 rest_id = None
-                if rest is not None:
+                if info.get("rest_saved"):
                     rest_id = 1_000_000 + int(rec.sequence_id)
-                    np.save(FEAT / f"{rest_id}.npy", rest)
                 append_manifest({
                     "sequence_id": int(rec.sequence_id),
                     "ok": True,
@@ -217,7 +286,7 @@ def process_zip(zinfo: dict, index: pd.DataFrame, extractor: HolisticExtractor,
                 print(f"    {rec.sequence_id} {rec.sign!r}  "
                       f"{info['n_frames']}f  hands={info['hands_detected_frac']:.0%}  "
                       f"E={info['motion_energy']:.3f}", flush=True)
-            except Exception as e:  # noqa: BLE001
+            except (Exception, subprocess.TimeoutExpired) as e:  # noqa: BLE001
                 append_manifest({"sequence_id": int(rec.sequence_id), "ok": False,
                                  "error": str(e), "zip": key})
                 print(f"    FAIL {rec.sequence_id}: {e}", flush=True)
@@ -226,10 +295,13 @@ def process_zip(zinfo: dict, index: pd.DataFrame, extractor: HolisticExtractor,
                     vpath.unlink()
             if remaining is not None and n_ok >= remaining:
                 break
-    try:
-        zip_path.unlink()
-    except OSError:
-        pass
+    if downloaded and not keep_zips:
+        try:
+            zip_path.unlink()
+        except OSError:
+            pass
+    elif keep_zips:
+        print(f"    keep {zip_path.name}", flush=True)
     return n_ok
 
 
@@ -258,6 +330,10 @@ def main():
     ap.add_argument("--calibrate", type=int, default=0,
                     help="stop after N successful extracts (20 for the sanity pass)")
     ap.add_argument("--max-zips", type=int, default=0)
+    ap.add_argument("--zip-dir", action="append", default=[],
+                    help="directory of already-downloaded Zenodo zips (repeatable)")
+    ap.add_argument("--keep-zips", action="store_true",
+                    help="do not delete zips after landmark extract")
     args = ap.parse_args()
 
     ensure_dirs()
@@ -272,21 +348,43 @@ def main():
     print(f"categories {sorted(index.category.unique())}", flush=True)
 
     files = needed_zips(index, zenodo_files())
+    done_ids = load_done()
+    pending_cats = set(
+        index.loc[~index.sequence_id.isin(done_ids), "category"]
+        .str.replace(" ", "_", regex=False)
+    )
+    already = zips_fully_consumed()
+    files = [f for f in files
+             if zip_category(f["key"]).replace(" ", "_") in pending_cats
+             and f["key"] not in already]
     if args.max_zips:
         files = files[:args.max_zips]
-    print(f"zenodo zips to scan: {len(files)}", flush=True)
+    print(f"pending INCLUDE-50 clips {len(index) - len(done_ids & set(index.sequence_id))}",
+          flush=True)
+    print(f"pending categories {sorted(pending_cats)}", flush=True)
+    print(f"skip already-extracted zips {len(already)}", flush=True)
+    print(f"zenodo zips to scan: {len(files)} {[f['key'] for f in files]}", flush=True)
+
+    zip_dirs = [Path(p) for p in args.zip_dir] + [TMP, DATA / "zips", DATA]
+    seen = set()
+    uniq_dirs = []
+    for d in zip_dirs:
+        d = d.resolve()
+        if d in seen:
+            continue
+        seen.add(d)
+        uniq_dirs.append(d)
+        d.mkdir(parents=True, exist_ok=True)
+    print(f"zip search dirs {[str(d) for d in uniq_dirs]}", flush=True)
 
     remaining = args.calibrate if args.calibrate else None
-    extractor = HolisticExtractor()
-    try:
-        for zinfo in files:
-            if remaining is not None and remaining <= 0:
-                break
-            n = process_zip(zinfo, index, extractor, remaining)
-            if remaining is not None:
-                remaining -= n
-    finally:
-        extractor.close()
+    for zinfo in files:
+        if remaining is not None and remaining <= 0:
+            break
+        n = process_zip(zinfo, index, remaining, uniq_dirs,
+                        keep_zips=args.keep_zips)
+        if remaining is not None:
+            remaining -= n
 
     index2 = merge_rest_into_index(index)
     index2.to_parquet(INDEX)
