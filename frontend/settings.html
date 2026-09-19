@@ -30,38 +30,23 @@
       <h3>Preferences for live translation</h3>
       <section class="settings-grid" aria-label="Settings">
         <article class="settings-card">
-          <h3>Camera</h3>
-          <div class="settings-row">
-            <div>
-              <strong>Show camera preview</strong>
-              <span>Keep the live feed visible while translating</span>
-            </div>
-            <div class="toggle on" aria-hidden="true"></div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <strong>Mirror video</strong>
-              <span>Flip the preview so signing matches your view</span>
-            </div>
-            <div class="toggle" aria-hidden="true"></div>
-          </div>
-        </article>
-        <article class="settings-card">
-          <h3>Output</h3>
-          <div class="settings-row">
-            <div>
-              <strong>Text captions</strong>
-              <span>Show translated words beside the camera</span>
-            </div>
-            <div class="toggle on" aria-hidden="true"></div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <strong>Spoken playback</strong>
-              <span>Read translations aloud on the Speech page</span>
-            </div>
-            <div class="toggle on" aria-hidden="true"></div>
-          </div>
+          <label class="field">
+            <span>Signed Language</span>
+            <select>
+              <option selected>ASL</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Spoken/Text Language</span>
+            <select>
+              <option selected>English</option>
+              <option>Spanish</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Speech Pitch</span>
+            <input type="range" min="0" max="100" value="50">
+          </label>
         </article>
       </section>
     </main>
