@@ -24,6 +24,25 @@ from backend.app.landmarks import (                           # noqa: E402
 
 DATA = config.ROOT / "data" / "gislr"
 FEAT = DATA / "features"
+MINE_DIR = DATA / "mine"
+
+# sequence_id namespaces, mirroring the participant_id ones below:
+#   < 800,000,000   GISLR sequences (inside the packed array)
+#   800,000,000+    signs WE recorded         -> MINE_DIR
+#   900,000,000+    rest windows WE recorded  -> REST_DIR
+MINE_ID_BASE = 800_000_000
+REST_ID_BASE = 900_000_000
+
+
+def source_dir(sequence_id):
+    """Which directory holds this sample's .npy file."""
+    sid = int(sequence_id)
+    if sid >= REST_ID_BASE:
+        return DATA / "rest"
+    if sid >= MINE_ID_BASE:
+        return MINE_DIR
+    return FEAT
+
 
 # Pose rows whose meaning mirrors when the image is flipped.
 _MIRROR_PAIRS = [
@@ -119,8 +138,7 @@ class GISLRDataset(Dataset):
             w = self.data[i].copy()
         else:
             sid = int(self.rows.sequence_id.iloc[i])
-            src = REST_DIR if sid >= 900_000_000 else FEAT
-            w = np.load(src / f"{sid}.npy").astype(np.float32)
+            w = np.load(source_dir(sid) / f"{sid}.npy").astype(np.float32)
         if self.train:
             g = self.rng
             if g.random() < 0.5:
@@ -170,10 +188,10 @@ def load_packed(sequence_ids: np.ndarray) -> np.ndarray:
     Falls back to per-file loads if the pack has not been built.
     """
     if not (PACK.exists() and IDS.exists()):
-        first = np.load(FEAT / f"{int(sequence_ids[0])}.npy")
+        first = np.load(source_dir(sequence_ids[0]) / f"{int(sequence_ids[0])}.npy")
         out = np.empty((len(sequence_ids), *first.shape), dtype=np.float32)
         for k, sid in enumerate(sequence_ids):
-            out[k] = np.load(FEAT / f"{int(sid)}.npy")
+            out[k] = np.load(source_dir(sid) / f"{int(sid)}.npy")
         return out
     all_ids = np.load(IDS)
     pos = {int(v): i for i, v in enumerate(all_ids)}
@@ -183,12 +201,28 @@ def load_packed(sequence_ids: np.ndarray) -> np.ndarray:
         sid = int(sid)
         if sid in pos:
             out[k] = mm[pos[sid]]
-        else:                       # recorded rest window, outside the pack
-            out[k] = np.load(REST_DIR / f"{sid}.npy")
+        else:                       # something WE recorded, outside the pack
+            out[k] = np.load(source_dir(sid) / f"{sid}.npy")
     return out
 
 
 REST_LABEL = "__REST__"
+
+# participant_id namespaces, so any row says where it came from:
+#   2044 .. 62590   the 21 GISLR signers
+#   -1              recorded rest windows (no signer)
+#   700000+         US -- people NOT in the GISLR corpus
+# GISLR's highest id is 62,590, so this cannot collide.
+MINE_SIGNER_BASE = 700_000
+
+
+def is_mine(participant_id) -> bool:
+    """True for signers we recorded ourselves, i.e. not in GISLR."""
+    return int(participant_id) >= MINE_SIGNER_BASE
+
+
+def mine_signer_id(n: int) -> int:
+    return MINE_SIGNER_BASE + int(n)
 REST_DIR = DATA / "rest"
 
 

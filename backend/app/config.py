@@ -54,7 +54,17 @@ AUDIO_FORMAT = "pcm_s16le_16000"
 # 35.6% of genuine signing frames as "idle", which chops segments mid-sign.
 # 0.008 misses ~12%. The false-positive side needs recorded REST footage to
 # tune (scripts/v010_record_rest.py); raise this if idle motion trips the gate.
-REC_MOTION_THRESHOLD = float(os.environ.get("SIGN_MOTION_THRESHOLD", "0.008"))
+# RE-MEASURED against real idle footage (the half that was unmeasured before).
+# Idle and signing motion overlap almost entirely:
+#          IDLE   SIGNING
+#   p50  0.0275    0.0387
+#   p90  0.1532    0.1877
+# At 0.008 idle tripped the gate 89% of the time, so it NEVER closed and every
+# segment ran to max_segment_s -- a fixed 2.5 s wait before anything was
+# classified. 0.025 is the best available separation (53% / 36%), which is
+# still poor: motion energy cannot reliably distinguish these. The real fix is
+# to gate on the model's own P(__REST__), which separates them cleanly.
+REC_MOTION_THRESHOLD = float(os.environ.get("SIGN_MOTION_THRESHOLD", "0.025"))
 # Lowered from 0.35 once the __REST__ class existed. The floor was originally
 # the ONLY thing suppressing false positives; now the rest class does that job
 # categorically, so the floor can be permissive. 0.35 was rejecting most real
@@ -75,7 +85,20 @@ REC_DEBOUNCE_S = float(os.environ.get("SIGN_DEBOUNCE_S", "1.0"))
 REC_QUIET_SECONDS = float(os.environ.get("SIGN_QUIET_SECONDS", "0.15"))
 # Force a segment boundary after this long. Real signs are short; sustained
 # motion past it means a pause was missed and signs are merging.
-REC_MAX_SEGMENT_S = float(os.environ.get("SIGN_MAX_SEGMENT_S", "2.5"))
+# Because the gate closes unreliably, this cap is what actually ends most
+# segments -- so it sets the felt latency. 2.5 s meant a 2.5 s wait before
+# EVERY word. 1.2 s is about one sign's length.
+REC_MAX_SEGMENT_S = float(os.environ.get("SIGN_MAX_SEGMENT_S", "1.2"))
+# Reject a segment as rest only when the model is CONFIDENT it is rest.
+# The veto used to be categorical -- argmax == __REST__ threw the segment away
+# even at P=0.43, which silently ate real signs whenever rest merely edged out
+# the right answer. Observed live: rejections at 0.43/0.49/0.66 alongside
+# genuine ones at 0.95.
+REC_REST_THRESHOLD = float(os.environ.get("SIGN_REST_THRESHOLD", "0.75"))
+# "rest"   -- segment using the model's P(__REST__)   (default; see
+#             RestGatedRecognizer for why motion gating was abandoned)
+# "motion" -- the old motion-energy gate, kept for comparison
+REC_GATE = os.environ.get("SIGN_GATE", "rest")
 # TEST ONLY. The __REST__ veto is categorical, so no confidence threshold can
 # bypass it -- which makes the downstream chain (utterance -> LLM -> TTS)
 # untestable with synthetic input, because synthetic motion correctly

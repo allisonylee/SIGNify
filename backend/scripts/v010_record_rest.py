@@ -44,8 +44,16 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-os.environ.setdefault("GLOG_minloglevel", "2")
-os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "2")
+# Quieten MediaPipe's C++ logging BEFORE anything imports it.
+# minloglevel: 0=INFO 1=WARNING 2=ERROR 3=FATAL. It must be 3 to silence the
+# "Failed to send to clearcut" lines -- those are logged at ERROR level and
+# were interleaving with this script's input prompt. They are Google telemetry
+# uploads failing, not a problem with recording. Real MediaPipe failures still
+# surface as Python exceptions, which this does not hide.
+os.environ.setdefault("GLOG_minloglevel", "3")
+os.environ.setdefault("GLOG_logtostderr", "0")
+os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")
+os.environ.setdefault("GLOG_alsologtostderr", "0")
 
 import cv2
 import numpy as np

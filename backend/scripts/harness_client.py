@@ -89,10 +89,20 @@ async def run(args):
     got = {"partial": 0, "text": 0, "audio": 0, "timing": 0, "error": 0}
 
     async with websockets.connect(url, max_size=16 * 1024 * 1024) as ws:
-        await ws.send(json.dumps({
-            "type": "config", "sign_language": args.sign_language,
-            "output_language": args.output_language,
-            "mode": "text" if args.no_audio else "speech"}))
+        cfg = {"type": "config", "sign_language": args.sign_language,
+               "output_language": args.output_language,
+               "mode": "text" if args.no_audio else "speech"}
+        if args.vocab:
+            cfg["vocab"] = [w.strip() for w in args.vocab.split(",") if w.strip()]
+            print(f"  restricting to {len(cfg['vocab'])} signs: {cfg['vocab']}")
+        expect = args.expect
+        if expect < 0:                       # --expect -1 means "as many as --vocab"
+            expect = len(cfg.get("vocab", []))
+        if expect:
+            cfg["expect"] = expect
+            print(f"  waiting for {expect} signs before sending to the LLM "
+                  f"(backstop: speaks anyway after ~4s of stillness)")
+        await ws.send(json.dumps(cfg))
 
         async def receive():
             async for raw in ws:
@@ -270,6 +280,14 @@ def main():
     p.add_argument("--linger", type=float, default=3.0,
                    help="seconds to keep receiving after the last frame")
     p.add_argument("--no-audio", action="store_true")
+    p.add_argument("--vocab", default="",
+                   help="comma-separated signs to restrict the model to -- "
+                        "hugely improves demo reliability")
+    p.add_argument("--expect", type=int, default=0, metavar="N",
+                   help="hold the utterance until N signs are recognised, then "
+                        "send all of them to the LLM at once, instead of "
+                        "ending the sentence on a timeout. -1 = however many "
+                        "signs --vocab lists. 0 (default) = timeout mode")
     p.add_argument("--no-preview", action="store_true",
                    help="run headless (no camera window)")
     p.add_argument("--sign-language", default="ase")

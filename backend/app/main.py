@@ -88,6 +88,7 @@ async def ws_endpoint(ws: WebSocket):
     # feels. Cost is modest: 1-2 gloss utterances bypass the model anyway.
     prefetch = None
     prefetch_for: list[str] = []
+    last_gloss_t = 0.0
 
     def start_prefetch():
         """Kick off a background translation of the utterance so far."""
@@ -128,6 +129,34 @@ async def ws_endpoint(ws: WebSocket):
             if kind == "config":
                 cfg.update({k: v for k, v in msg.items()
                             if k not in ("type", "voice")})
+                if "vocab" in msg and hasattr(rec, "labels"):
+                    # DEMO-CRITICAL. Restricting the classifier to the handful
+                    # of signs a demo actually uses turns a 255-way decision
+                    # into a 5-way one. Per-sign accuracy compounds across a
+                    # sentence, so this is worth far more than extra training.
+                    import torch as _t
+                    want = [w.strip() for w in (msg["vocab"] or []) if w.strip()]
+                    idx = [rec.labels.index(w) for w in want if w in rec.labels]
+                    unknown = [w for w in want if w not in rec.labels]
+                    # keep __REST__ selectable or the rest gate cannot fire
+                    if idx and rec.rest_label in rec.labels:
+                        ri = rec.labels.index(rec.rest_label)
+                        if ri not in idx:
+                            idx.append(ri)
+                    rec.allowed = _t.tensor(idx, device=rec.device) if idx else None
+                    print(f"[ws] vocab restricted to {len(idx)} classes: {want}"
+                          + (f"  UNKNOWN: {unknown}" if unknown else ""))
+                    await ws.send_json({"type": "state", "signing": False,
+                                        "vocab": want, "unknown": unknown})
+                if "expect" in msg:
+                    # DEMO MODE. End the utterance on COUNT rather than on the
+                    # clock: hold everything back until this many signs have
+                    # been committed, then send them to the LLM all at once.
+                    utt.expect = max(0, int(msg["expect"] or 0))
+                    print(f"[ws] expect = {utt.expect}"
+                          + (f" signs before the LLM fires (backstop "
+                             f"{utt.expect_backstop_s:.1f}s)" if utt.expect
+                             else " -> timeout endpointing"))
                 if "voice" in msg:
                     # Clamped server-side: a client sending speed=50 is capped,
                     # not passed through (plan 15.5).
@@ -198,15 +227,14 @@ async def ws_endpoint(ws: WebSocket):
                         # A segment WAS classified but a guard threw it away.
                         # Surface it -- otherwise "nothing happens" is
                         # indistinguishable from "not detected at all".
-                        why = max(rec.rejected, key=lambda k: rec.rejected[k]
-                                  if rec.rejected[k] else -1)
-                        why = next((k for k in rec.rejected
-                                    if rec.rejected[k] and k == why), why)
+                        # the reason for THIS rejection, not the most
+                        # common one so far (which is what it used to report)
+                        why = rec.last_reject or "?"
                         await ws.send_json({
                             "type": "rejected", "reason": why,
                             "top": [[n, round(p, 3)] for n, p in rec.last_scores[:3]],
                             "counts": dict(rec.rejected)})
-                        print(f"[ws] rejected ({why}): "
+                        print(f"[ws] t={now:7.2f} rejected ({why}): "
                               f"{[(n, round(p,2)) for n,p in rec.last_scores[:3]]}")
                 else:
                     window = buf.window()
@@ -218,6 +246,7 @@ async def ws_endpoint(ws: WebSocket):
                     # Text goes out IMMEDIATELY, per gloss, before any LLM or
                     # TTS work. The screen keeps up; only audio waits.
                     utt.add(result.gloss[0], now)
+                    last_gloss_t = now
                     await ws.send_json({"type": "partial",
                                         "gloss": list(utt.glosses),
                                         "conf": result.confidence})
@@ -228,7 +257,7 @@ async def ws_endpoint(ws: WebSocket):
                         "text_first_ms": round(
                             (time.perf_counter() - t0) * 1000, 1),
                         "utterance": len(utt)})
-                    print(f"[ws] gloss {result.gloss[0]!r} "
+                    print(f"[ws] t={now:7.2f} gloss {result.gloss[0]!r} "
                           f"conf={result.confidence} utterance={len(utt)}")
 
                     start_prefetch()
@@ -286,7 +315,8 @@ async def ws_endpoint(ws: WebSocket):
 
             timings["total_ms"] = round((time.perf_counter() - t_utt) * 1000, 1)
             await ws.send_json({"type": "timing", **timings})
-            print(f"[ws] UTTERANCE {glosses} -> {text!r}  {timings}")
+            print(f"[ws] t={now:7.2f} UTTERANCE {glosses} -> {text!r}  "
+                  f"waited={now - last_gloss_t:.2f}s since last gloss  {timings}")
 
     except WebSocketDisconnect:
         dur = time.perf_counter() - t_connect
