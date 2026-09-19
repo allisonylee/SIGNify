@@ -1,0 +1,201 @@
+"""
+Python stand-in for the browser. NOT SHIPPED -- a test tool.
+
+Drives the backend end to end with no frontend in existence:
+
+    webcam/synthetic -> [mode A: MediaPipe here] -> WS -> backend -> audio out
+
+Keep it for the whole hackathon: when integration breaks at hour 30, this tells
+you in ten seconds whether the bug is ours or the frontend's.
+
+    python backend/scripts/harness_client.py --source synthetic --mode B
+    python backend/scripts/harness_client.py --source webcam    --mode A
+    python backend/scripts/harness_client.py --source webcam --no-audio
+
+MIRRORING (plan section 14.2): the wire format is UN-MIRRORED. cv2 gives us
+un-mirrored frames already, so we send them as-is. A client that mirrors for
+display must un-mirror before sending.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import base64
+import json
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.app.landmarks import N_POSE_UPPER  # noqa: E402
+
+
+def synthetic_frame(i: int, w=640, h=480) -> np.ndarray:
+    """
+    A crude moving figure. Enough for MediaPipe to usually find *something*,
+    and enough to exercise the pipe when the camera is unavailable.
+    """
+    import cv2
+    img = np.full((h, w, 3), 210, np.uint8)
+    cx, cy = w // 2, h // 2
+    cv2.circle(img, (cx, cy - 110), 55, (170, 150, 140), -1)          # head
+    cv2.rectangle(img, (cx - 75, cy - 55), (cx + 75, cy + 120),
+                  (90, 90, 160), -1)                                   # torso
+    a = i * 0.18
+    for sign in (-1, 1):
+        hx = int(cx + sign * (110 + 42 * np.cos(a)))
+        hy = int(cy - 18 + 42 * np.sin(a))
+        cv2.line(img, (cx + sign * 70, cy - 35), (hx, hy), (90, 90, 160), 26)
+        cv2.circle(img, (hx, hy), 27, (170, 150, 140), -1)             # hands
+    return img
+
+
+async def run(args):
+    import cv2
+    import websockets
+
+    play = None
+    if not args.no_audio:
+        import sounddevice as sd
+        play = sd
+
+    cap = None
+    if args.source == "webcam":
+        cap = cv2.VideoCapture(args.camera)
+        if not cap.isOpened():
+            print("!! cannot open camera. On macOS the terminal needs camera\n"
+                  "   permission: System Settings > Privacy & Security > Camera.\n"
+                  "   Falling back to --source synthetic.")
+            cap, args.source = None, "synthetic"
+
+    extractor = None
+    if args.mode == "A":
+        from backend.app.landmarks import HolisticExtractor
+        extractor = HolisticExtractor()
+        print("[harness] mode A: running MediaPipe locally, sending landmarks")
+    else:
+        print("[harness] mode B: sending JPEG frames, backend extracts")
+
+    url = f"ws://{args.host}:{args.port}/ws"
+    print(f"[harness] connecting {url}")
+    t_start = time.perf_counter()
+    t_sent_done = None
+    sent = 0
+    got = {"partial": 0, "text": 0, "audio": 0, "timing": 0, "error": 0}
+
+    async with websockets.connect(url, max_size=16 * 1024 * 1024) as ws:
+        await ws.send(json.dumps({
+            "type": "config", "sign_language": args.sign_language,
+            "output_language": args.output_language,
+            "mode": "text" if args.no_audio else "speech"}))
+
+        async def receive():
+            async for raw in ws:
+                m = json.loads(raw)
+                k = m.get("type")
+                got[k] = got.get(k, 0) + 1
+                if k == "partial":
+                    print(f"  <- gloss   {m['gloss']} conf={m['conf']}")
+                elif k == "text":
+                    print(f"  <- text    {m['text']!r} [{m['lang']}]")
+                elif k == "timing":
+                    print(f"  <- timing  {({kk: vv for kk, vv in m.items() if kk != 'type'})}")
+                elif k == "audio":
+                    pcm = base64.b64decode(m["chunk"])
+                    secs = len(pcm) / 2 / m["sample_rate"]
+                    print(f"  <- audio   {len(pcm):,} B = {secs:.2f}s @{m['sample_rate']}")
+                    if play is not None:
+                        # Off the event loop: play.wait() blocks, which would
+                        # stall the send loop and corrupt the fps measurement.
+                        a = np.frombuffer(pcm, dtype=np.int16)
+                        sr = m["sample_rate"]
+                        def _spk(buf=a, rate=sr):
+                            play.play(buf, rate); play.wait()
+                        asyncio.create_task(asyncio.to_thread(_spk))
+                elif k == "error":
+                    print(f"  <- ERROR   {m.get('detail')}")
+
+        rx = asyncio.create_task(receive())
+        try:
+            while sent < args.frames:
+                if cap is not None:
+                    ok, bgr = await asyncio.to_thread(cap.read)
+                    if not ok:
+                        print("!! camera read failed"); break
+                    # 1080p is far more than MediaPipe needs and costs real
+                    # time in both modes. Downscale to a fixed working width.
+                    if bgr.shape[1] > args.width:
+                        sc = args.width / bgr.shape[1]
+                        bgr = cv2.resize(bgr, (args.width, int(bgr.shape[0] * sc)),
+                                         interpolation=cv2.INTER_AREA)
+                else:
+                    bgr = synthetic_frame(sent)
+
+                t = time.perf_counter() - t_start
+                if args.mode == "A":
+                    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                    hands, pose = extractor.extract(rgb, int(t * 1000))
+                    msg = {"type": "landmarks", "seq": sent, "t": t,
+                           "hands": {k: (v.tolist() if v is not None else None)
+                                     for k, v in hands.items()},
+                           "pose": np.nan_to_num(pose).tolist()
+                           if pose is not None else [[0, 0]] * N_POSE_UPPER}
+                else:
+                    ok, enc = cv2.imencode(".jpg", bgr,
+                                           [cv2.IMWRITE_JPEG_QUALITY, args.jpeg_quality])
+                    msg = {"type": "frame", "seq": sent, "t": t,
+                           "jpeg": base64.b64encode(enc.tobytes()).decode()}
+
+                await ws.send(json.dumps(msg))
+                sent += 1
+                await asyncio.sleep(max(0.0, 1.0 / args.fps))
+            t_sent_done = time.perf_counter()
+            await asyncio.sleep(args.linger)
+        finally:
+            rx.cancel()
+
+    dur = time.perf_counter() - t_start
+    if cap is not None:
+        cap.release()
+    if extractor is not None:
+        extractor.close()
+
+    print(f"\n{'=' * 58}")
+    print(f"  source {args.source}  mode {args.mode}")
+    send_dur = (t_sent_done - t_start) if t_sent_done else dur
+    print(f"  sent {sent} frames in {send_dur:.1f}s  ({sent/send_dur:.1f} fps "
+          f"sending; requested {args.fps:.0f})")
+    print(f"  total wall clock {dur:.1f}s (includes {args.linger:.0f}s linger)")
+    print(f"  received {got}")
+    good = got.get("text", 0) > 0 and (args.no_audio or got.get("audio", 0) > 0)
+    print(f"  END-TO-END: {'PASS' if good else 'FAIL'}")
+    print(f"{'=' * 58}")
+    return 0 if good else 1
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--source", choices=["webcam", "synthetic"], default="webcam")
+    p.add_argument("--mode", choices=["A", "B"], default="B",
+                   help="A = landmarks on client, B = frames to backend")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--fps", type=float, default=15.0)
+    p.add_argument("--frames", type=int, default=60)
+    p.add_argument("--jpeg-quality", type=int, default=70)
+    p.add_argument("--width", type=int, default=640,
+                   help="downscale camera frames to this width before processing")
+    p.add_argument("--linger", type=float, default=3.0,
+                   help="seconds to keep receiving after the last frame")
+    p.add_argument("--no-audio", action="store_true")
+    p.add_argument("--sign-language", default="ase")
+    p.add_argument("--output-language", default="en")
+    sys.exit(asyncio.run(run(p.parse_args())))
+
+
+if __name__ == "__main__":
+    main()
