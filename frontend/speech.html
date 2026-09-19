@@ -13,19 +13,25 @@
   </head>
   <body>
     <header>
+      <div class="header-inner">
       <h1><a href="./index.html">Signagram</a></h1>
+      <nav class="menu" aria-label="Primary">
+        <ul>
+          <li><a href="./index.html">Text</a></li>
+          <li><a class="active" href="./speech.html">Speech</a></li>
+          <li><a href="./settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      </div>
     </header>
 
-    <nav class="menu">
-      <ul>
-        <li><a href=".">Text</a></li>
-        <li><a href=".\speech.html">Speech</a></li>
-        <li><a href=".\settings.html">Settings</a></li>
-      </ul>
-    </nav>
-
-    <h2>Sign to Speech</h2>
-
-    <h3>Record live translations</h3>
+    <main>
+      <h2>Sign to Speech</h2>
+      <h3>Record live translations</h3>
+      <section class="workspace" aria-label="Live speech translation workspace">
+        <div class="stage">Camera feed</div>
+        <p class="genText">Spoken translation will appear here...</p>
+      </section>
+    </main>
   </body>
 </html>

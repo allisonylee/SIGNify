@@ -13,17 +13,57 @@
   </head>
   <body>
     <header>
+      <div class="header-inner">
       <h1><a href="./index.html">Signagram</a></h1>
+      <nav class="menu" aria-label="Primary">
+        <ul>
+          <li><a href="./index.html">Text</a></li>
+          <li><a href="./speech.html">Speech</a></li>
+          <li><a class="active" href="./settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      </div>
     </header>
 
-    <nav class="menu">
-      <ul>
-        <li><a href=".">Text</a></li>
-        <li><a href=".\speech.html">Speech</a></li>
-        <li><a href=".\settings.html">Settings</a></li>
-      </ul>
-    </nav>
-
-    <h2>Settings</h2>
+    <main>
+      <h2>Settings</h2>
+      <h3>Preferences for live translation</h3>
+      <section class="settings-grid" aria-label="Settings">
+        <article class="settings-card">
+          <h3>Camera</h3>
+          <div class="settings-row">
+            <div>
+              <strong>Show camera preview</strong>
+              <span>Keep the live feed visible while translating</span>
+            </div>
+            <div class="toggle on" aria-hidden="true"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <strong>Mirror video</strong>
+              <span>Flip the preview so signing matches your view</span>
+            </div>
+            <div class="toggle" aria-hidden="true"></div>
+          </div>
+        </article>
+        <article class="settings-card">
+          <h3>Output</h3>
+          <div class="settings-row">
+            <div>
+              <strong>Text captions</strong>
+              <span>Show translated words beside the camera</span>
+            </div>
+            <div class="toggle on" aria-hidden="true"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <strong>Spoken playback</strong>
+              <span>Read translations aloud on the Speech page</span>
+            </div>
+            <div class="toggle on" aria-hidden="true"></div>
+          </div>
+        </article>
+      </section>
+    </main>
   </body>
 </html>
