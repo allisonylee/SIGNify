@@ -27,6 +27,8 @@ backend/outputs/
 backend/models/*
 !backend/models/encoder_ase.pt
 !backend/models/encoder_ins.pt
+!backend/models/encoder_csn.pt
 
 izzie-rules.txt
 .cursor
+frontend-rules.txt
