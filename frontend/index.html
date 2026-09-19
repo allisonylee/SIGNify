@@ -17,7 +17,7 @@
       <h1><a href="./index.html">Signagram</a></h1>
       <nav class="menu" aria-label="Primary">
         <ul>
-          <li><a class="active" href="./index.html">Text</a></li>
+          <li><a class="active" href="./index.html">Sign</a></li>
           <li><a href="./speech.html">Speech</a></li>
           <li><a href="./settings.html">Settings</a></li>
         </ul>
@@ -27,11 +27,25 @@
 
     <main>
       <h2>Sign to Text</h2>
-      <h3>Translate live</h3>
+      <div class="section-head">
+        <h3>Translate live</h3>
+        <button class="toggle" type="button" aria-pressed="false">Speak</button>
+      </div>
       <section class="workspace" aria-label="Live translation workspace">
         <div class="stage">Camera feed</div>
-        <p class="genText">The translation will appear here...</p>
+        <p class="genText">
+          <span class="committed" id="committed" aria-live="polite"></span>
+          <span class="placeholder" id="placeholder">The translation will appear here...</span>
+        </p>
       </section>
     </main>
+
+    <script>
+      document.querySelector(".toggle").addEventListener("click", (event) => {
+        const button = event.currentTarget;
+        button.setAttribute("aria-pressed", button.getAttribute("aria-pressed") === "true" ? "false" : "true");
+      });
+    </script>
+    <script type="module" src="sign.js"></script>
   </body>
 </html>

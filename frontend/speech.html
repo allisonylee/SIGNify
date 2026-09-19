@@ -17,7 +17,7 @@
       <h1><a href="./index.html">Signagram</a></h1>
       <nav class="menu" aria-label="Primary">
         <ul>
-          <li><a href="./index.html">Text</a></li>
+          <li><a href="./index.html">Sign</a></li>
           <li><a class="active" href="./speech.html">Speech</a></li>
           <li><a href="./settings.html">Settings</a></li>
         </ul>
@@ -26,12 +26,38 @@
     </header>
 
     <main>
-      <h2>Sign to Speech</h2>
-      <h3>Translate live</h3>
-      <section class="workspace" aria-label="Live speech translation workspace">
-        <div class="stage">Camera feed</div>
-        <p class="genText">Spoken translation will appear here...</p>
+      <h2>Speech to Text</h2>
+      <div class="section-head">
+        <h3>Transcribe live</h3>
+        <div class="controls">
+          <span class="status" id="status" data-state="idle" role="status">Not listening</span>
+          <button class="toggle" id="listen" type="button" aria-pressed="false">Listen</button>
+        </div>
+      </div>
+      <p class="note" id="note" role="status" hidden></p>
+      <section class="workspace" aria-label="Live transcription workspace">
+        <div class="stage">
+          <div class="mic-input">
+            <div class="audio-viz" id="viz" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <span>Microphone input</span>
+          </div>
+        </div>
+        <p class="genText">
+          <span class="committed" id="committed" aria-live="polite"></span>
+          <span class="partial" id="partial" aria-hidden="true"></span>
+          <span class="placeholder" id="placeholder">The transcription will appear here...</span>
+        </p>
       </section>
     </main>
+
+    <script type="module" src="speech.js"></script>
   </body>
 </html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translator check &middot; Signagram</title>
+    <link rel="stylesheet" href="style.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=ADLaM+Display&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
+
+    <style>
+      .env {
+        margin: 0 0 1.5rem;
+        padding: 1rem 1.2rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        line-height: 1.6;
+      }
+
+      .env code {
+        color: var(--text);
+      }
+
+      .explain {
+        max-width: 78ch;
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 500;
+        line-height: 1.6;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+        font-weight: 500;
+      }
+
+      th,
+      td {
+        padding: 0.7rem 0.8rem;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      td[data-state="good"] {
+        color: #a8e0b4;
+      }
+
+      td[data-state="bad"] {
+        color: #f0a9a0;
+      }
+
+      td[data-state="waiting"] {
+        color: var(--muted);
+      }
+
+      .pair {
+        white-space: nowrap;
+        color: var(--text);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-inner">
+      <h1><a href="./index.html">Signagram</a></h1>
+      <nav class="menu" aria-label="Primary">
+        <ul>
+          <li><a href="./index.html">Sign</a></li>
+          <li><a href="./speech.html">Speech</a></li>
+          <li><a href="./settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      </div>
+    </header>
+
+    <main>
+      <h2>Translator check</h2>
+      <div class="section-head">
+        <h3>On-device translation support, per language pair</h3>
+        <button class="toggle" id="run" type="button">Run checks</button>
+      </div>
+
+      <p class="env" id="env"></p>
+
+      <p class="explain">
+        Chrome reports every language pair as <code>downloadable</code> until a site
+        actually creates a translator for it &mdash; it hides real pack availability
+        for privacy. So <strong>only the Create column is meaningful</strong>;
+        availability cannot tell us whether a pair works.
+      </p>
+      <p class="explain">
+        When creation fails, Chrome throws a deliberately generic
+        <code>NotSupportedError</code> but logs the specific reason as a console
+        warning. <strong>Open DevTools &rarr; Console before running this</strong> to
+        see why a pair was refused.
+      </p>
+      <p class="explain">
+        Every <code>create()</code> is fired at once, inside the click, because
+        downloading a pack needs user activation and awaiting pairs one by one would
+        spend it before the later ones ran. First run may take a while per pack.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Pair</th>
+            <th>Availability</th>
+            <th>Create</th>
+            <th>Sample translation</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </main>
+
+    <script type="module" src="translator-check.js"></script>
+  </body>
+</html>
