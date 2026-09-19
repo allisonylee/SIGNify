@@ -298,6 +298,23 @@ input[type="range"] {
   margin: 0;
 }
 
+.slider {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0.5rem;
+}
+
+.slider-ticks span {
+  width: 1px;
+  height: 0.4rem;
+  background: rgba(212, 221, 226, 0.32);
+}
+
 @media (min-width: 861px) {
   .field {
     grid-template-columns: minmax(0, 210px) minmax(0, 1fr);
