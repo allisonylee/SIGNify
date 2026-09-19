@@ -32,16 +32,17 @@
         <article class="settings-card">
           <label class="field">
             <span>Signed Language</span>
-            <select>
-              <option selected>ASL</option>
+            <select id="signedLanguage">
+              <option>ASL</option>
               <option>ISL</option>
               <option>CSN</option>
             </select>
           </label>
           <label class="field">
             <span>Spoken/Text Language</span>
-            <select>
-              <option selected>English</option>
+            <select id="spokenLanguage">
+              <option>English</option>
+              <option>Hindi</option>
               <option>Spanish</option>
             </select>
           </label>
@@ -61,5 +62,7 @@
         </article>
       </section>
     </main>
+
+    <script type="module" src="settings.js"></script>
   </body>
 </html>

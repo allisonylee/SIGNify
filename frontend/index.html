@@ -33,7 +33,10 @@
       </div>
       <section class="workspace" aria-label="Live translation workspace">
         <div class="stage">Camera feed</div>
-        <p class="genText">The translation will appear here...</p>
+        <p class="genText">
+          <span class="committed" id="committed" aria-live="polite"></span>
+          <span class="placeholder" id="placeholder">The translation will appear here...</span>
+        </p>
       </section>
     </main>
 
@@ -43,5 +46,6 @@
         button.setAttribute("aria-pressed", button.getAttribute("aria-pressed") === "true" ? "false" : "true");
       });
     </script>
+    <script type="module" src="sign.js"></script>
   </body>
 </html>

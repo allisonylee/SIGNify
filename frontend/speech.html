@@ -27,11 +27,18 @@
 
     <main>
       <h2>Speech to Text</h2>
-      <h3>Transcribe live</h3>
+      <div class="section-head">
+        <h3>Transcribe live</h3>
+        <div class="controls">
+          <span class="status" id="status" data-state="idle" role="status">Not listening</span>
+          <button class="toggle" id="listen" type="button" aria-pressed="false">Listen</button>
+        </div>
+      </div>
+      <p class="note" id="note" role="status" hidden></p>
       <section class="workspace" aria-label="Live transcription workspace">
         <div class="stage">
           <div class="mic-input">
-            <div class="audio-viz" aria-hidden="true">
+            <div class="audio-viz" id="viz" aria-hidden="true">
               <span></span>
               <span></span>
               <span></span>
@@ -43,8 +50,14 @@
             <span>Microphone input</span>
           </div>
         </div>
-        <p class="genText">The transcription will appear here...</p>
+        <p class="genText">
+          <span class="committed" id="committed" aria-live="polite"></span>
+          <span class="partial" id="partial" aria-hidden="true"></span>
+          <span class="placeholder" id="placeholder">The transcription will appear here...</span>
+        </p>
       </section>
     </main>
+
+    <script type="module" src="speech.js"></script>
   </body>
 </html>

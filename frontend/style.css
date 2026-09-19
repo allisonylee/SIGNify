@@ -154,6 +154,67 @@ h3 {
   color: var(--header);
 }
 
+.toggle:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.status {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.status[data-state="live"] {
+  color: var(--text);
+}
+
+.status[data-state="live"]::before {
+  opacity: 1;
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+
+.status[data-state="error"] {
+  color: #f0a9a0;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.note {
+  margin: -0.5rem 0 1.1rem;
+  max-width: 68ch;
+  color: #f0a9a0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
@@ -205,13 +266,22 @@ h3 {
   animation: audio-bar 1.3s ease-in-out infinite;
 }
 
-.audio-viz span:nth-child(1) { animation-delay: -1.2s; }
-.audio-viz span:nth-child(2) { animation-delay: -0.5s; }
-.audio-viz span:nth-child(3) { animation-delay: -0.9s; }
-.audio-viz span:nth-child(4) { animation-delay: -0.2s; }
-.audio-viz span:nth-child(5) { animation-delay: -1s; }
-.audio-viz span:nth-child(6) { animation-delay: -0.4s; }
-.audio-viz span:nth-child(7) { animation-delay: -0.75s; }
+.audio-viz span:nth-child(1) { animation-delay: -1.2s; --gain: 0.55; }
+.audio-viz span:nth-child(2) { animation-delay: -0.5s; --gain: 0.72; }
+.audio-viz span:nth-child(3) { animation-delay: -0.9s; --gain: 0.88; }
+.audio-viz span:nth-child(4) { animation-delay: -0.2s; --gain: 1; }
+.audio-viz span:nth-child(5) { animation-delay: -1s; --gain: 0.9; }
+.audio-viz span:nth-child(6) { animation-delay: -0.4s; --gain: 0.7; }
+.audio-viz span:nth-child(7) { animation-delay: -0.75s; --gain: 0.52; }
+
+/* While a session is open the bars track the real mic level, so the idle
+   keyframe loop has to get out of the way. */
+.audio-viz.live span {
+  animation: none;
+  background: var(--text);
+  transform: scaleY(clamp(0.12, calc(var(--level, 0) * var(--gain, 1)), 1));
+  transition: transform 90ms ease-out;
+}
 
 @keyframes audio-bar {
   0%,
@@ -229,6 +299,10 @@ h3 {
     animation: none;
     transform: scaleY(0.4);
   }
+
+  .status[data-state="live"]::before {
+    animation: none;
+  }
 }
 
 .genText {
@@ -240,6 +314,20 @@ h3 {
   font-size: 1.15rem;
   font-weight: 500;
   line-height: 1.55;
+  overflow-y: auto;
+}
+
+.placeholder {
+  color: rgba(45, 63, 71, 0.55);
+}
+
+/* Interim text the model may still revise, set apart from committed text. */
+.partial {
+  color: rgba(45, 63, 71, 0.5);
+}
+
+.partial:not(:empty)::before {
+  content: " ";
 }
 
 .settings-grid {
