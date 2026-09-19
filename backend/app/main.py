@@ -81,6 +81,22 @@ async def ws_endpoint(ws: WebSocket):
     factory = STATE.get("recognizer_factory")
     rec = factory() if factory else StubRecognizer()
     utt = UtteranceBuffer()
+    # SPECULATIVE PREFETCH (plan 8.1). After each gloss we start translating
+    # the utterance-so-far in the background. If another gloss arrives we throw
+    # that away and start again; if none does, the result is already in hand
+    # when the timeout fires, so the LLM's ~570 ms leaves the path the user
+    # feels. Cost is modest: 1-2 gloss utterances bypass the model anyway.
+    prefetch = None
+    prefetch_for: list[str] = []
+
+    def start_prefetch():
+        """Kick off a background translation of the utterance so far."""
+        nonlocal prefetch, prefetch_for
+        if prefetch is not None and not prefetch.done():
+            prefetch.cancel()
+        prefetch_for = list(utt.glosses)
+        prefetch = asyncio.create_task(
+            llm.translate(prefetch_for, cfg["output_language"]))
     tts = STATE["tts"]
     llm = STATE["llm"]
     extractor = None                      # mode B only, created on first frame
@@ -91,8 +107,23 @@ async def ws_endpoint(ws: WebSocket):
 
     try:
         while True:
-            msg = await ws.receive_json()
-            kind = msg.get("type")
+            # Wake up regularly even with no traffic. Endpointing is driven by
+            # the PASSAGE OF TIME, not by messages -- if it only ran on arrival,
+            # a stalled camera or a client that stops sending would leave a
+            # half-finished utterance pending forever.
+            try:
+                msg = await asyncio.wait_for(ws.receive_json(), timeout=0.15)
+            except (asyncio.TimeoutError, TimeoutError):
+                msg, kind = None, None
+            else:
+                kind = msg.get("type")
+
+            if msg is None:
+                # idle tick: only the endpoint check below matters
+                now = time.perf_counter() - t_connect
+                frame = None
+            else:
+                kind = msg.get("type")
 
             if kind == "config":
                 cfg.update({k: v for k, v in msg.items()
@@ -124,6 +155,7 @@ async def ws_endpoint(ws: WebSocket):
                                     "gloss": list(utt.glosses),
                                     "conf": 1.0, "source": "manual"})
                 print(f"[ws] MANUAL gloss {g!r} utterance={len(utt)}")
+                start_prefetch()
                 if not msg.get("flush"):
                     continue
                 # flush=true ends the utterance immediately, so a test does not
@@ -135,8 +167,8 @@ async def ws_endpoint(ws: WebSocket):
                 extractor = HolisticExtractor()
                 print("[ws] mode B: created HolisticExtractor")
 
-            if kind == "gloss":
-                pass                      # already handled; fall through to flush
+            if kind in ("gloss", None):
+                pass          # idle tick, or gloss already handled: fall through
             else:
               try:
                 if kind == "frame":
@@ -149,7 +181,8 @@ async def ws_endpoint(ws: WebSocket):
                 await ws.send_json({"type": "error", "detail": str(e)})
                 continue
 
-            now = (time.perf_counter() - t_connect) if frame is None else frame.t
+            if msg is not None:
+                now = (time.perf_counter() - t_connect) if frame is None else frame.t
             if frame is not None:
                 n_in += 1
                 buf.add(frame)
@@ -158,8 +191,23 @@ async def ws_endpoint(ws: WebSocket):
             if frame is not None and buf.ready():
                 t0 = time.perf_counter()
                 if hasattr(rec, "observe"):
+                    before = sum(rec.rejected.values())
                     result = rec.observe(buf, frame.t)
                     window_ms = 0.0
+                    if result is None and sum(rec.rejected.values()) > before:
+                        # A segment WAS classified but a guard threw it away.
+                        # Surface it -- otherwise "nothing happens" is
+                        # indistinguishable from "not detected at all".
+                        why = max(rec.rejected, key=lambda k: rec.rejected[k]
+                                  if rec.rejected[k] else -1)
+                        why = next((k for k in rec.rejected
+                                    if rec.rejected[k] and k == why), why)
+                        await ws.send_json({
+                            "type": "rejected", "reason": why,
+                            "top": [[n, round(p, 3)] for n, p in rec.last_scores[:3]],
+                            "counts": dict(rec.rejected)})
+                        print(f"[ws] rejected ({why}): "
+                              f"{[(n, round(p,2)) for n,p in rec.last_scores[:3]]}")
                 else:
                     window = buf.window()
                     window_ms = (time.perf_counter() - t0) * 1000
@@ -183,6 +231,14 @@ async def ws_endpoint(ws: WebSocket):
                     print(f"[ws] gloss {result.gloss[0]!r} "
                           f"conf={result.confidence} utterance={len(utt)}")
 
+                    start_prefetch()
+
+            # Mid-sign? Then the sentence is not over, whatever the clock
+            # says. Without this the utterance ends while the user is still
+            # signing (see UtteranceBuffer.keep_alive).
+            if getattr(rec, "state", None) == "signing":
+                utt.keep_alive(now)
+
             # ---- 2. endpointing: checked on EVERY frame ----
             # An utterance ends because no new sign arrived, so this cannot sit
             # behind the "a gloss was committed" branch -- it is precisely the
@@ -193,14 +249,25 @@ async def ws_endpoint(ws: WebSocket):
 
             glosses = utt.take()
             t_utt = time.perf_counter()
-            text = await llm.translate(glosses, cfg["output_language"])
+            if prefetch is not None and prefetch_for == glosses:
+                try:
+                    text = await prefetch          # usually already finished
+                    llm_source = "prefetch"
+                except asyncio.CancelledError:
+                    text = await llm.translate(glosses, cfg["output_language"])
+                    llm_source = "gemini"
+            else:
+                if prefetch is not None and not prefetch.done():
+                    prefetch.cancel()
+                text = await llm.translate(glosses, cfg["output_language"])
+                llm_source = "bypass" if should_bypass(glosses) else "gemini"
+            prefetch, prefetch_for = None, []
             llm_ms = (time.perf_counter() - t_utt) * 1000
             await ws.send_json({"type": "text", "text": text,
                                 "lang": cfg["output_language"],
                                 "glosses": glosses, "end_reason": reason})
 
-            timings = {"llm_ms": round(llm_ms, 1),
-                       "llm": "bypass" if should_bypass(glosses) else "gemini",
+            timings = {"llm_ms": round(llm_ms, 1), "llm": llm_source,
                        "glosses": len(glosses), "end_reason": reason}
 
             if cfg.get("mode") == "speech":
@@ -226,5 +293,7 @@ async def ws_endpoint(ws: WebSocket):
         print(f"[ws] closed after {dur:.1f}s, {n_in} frames "
               f"({n_in/dur:.1f}/s), {buf.dropped_out_of_order} out-of-order")
     finally:
+        if prefetch is not None and not prefetch.done():
+            prefetch.cancel()
         if extractor is not None:
             extractor.close()

@@ -83,6 +83,9 @@ async def run(args):
     t_start = time.perf_counter()
     t_sent_done = None
     sent = 0
+    ui = {"utterance": [], "sentence": "", "audio": "", "err": "",
+          "fps": 0.0, "reject": ""}
+    show = (not args.no_preview) and args.source == "webcam"
     got = {"partial": 0, "text": 0, "audio": 0, "timing": 0, "error": 0}
 
     async with websockets.connect(url, max_size=16 * 1024 * 1024) as ws:
@@ -98,9 +101,12 @@ async def run(args):
                 got[k] = got.get(k, 0) + 1
                 if k == "partial":
                     # 'gloss' is the utterance SO FAR, not a single word.
+                    ui["utterance"] = m["gloss"]
                     print(f"  <- gloss   utterance so far: {m['gloss']}  "
                           f"conf={m['conf']}")
                 elif k == "text":
+                    ui["sentence"] = m["text"]
+                    ui["utterance"] = []
                     print(f"  <- SENTENCE {m['text']!r} [{m['lang']}]")
                     if m.get("glosses"):
                         print(f"               from {m['glosses']} "
@@ -110,6 +116,7 @@ async def run(args):
                 elif k == "audio":
                     pcm = base64.b64decode(m["chunk"])
                     secs = len(pcm) / 2 / m["sample_rate"]
+                    ui["audio"] = f"{secs:.1f}s"
                     print(f"  <- audio   {len(pcm):,} B = {secs:.2f}s @{m['sample_rate']}")
                     if play is not None:
                         # Off the event loop: play.wait() blocks, which would
@@ -119,12 +126,21 @@ async def run(args):
                         def _spk(buf=a, rate=sr):
                             play.play(buf, rate); play.wait()
                         asyncio.create_task(asyncio.to_thread(_spk))
+                elif k == "rejected":
+                    top = m.get("top") or []
+                    best = f"{top[0][0]} {top[0][1]:.2f}" if top else "?"
+                    ui["reject"] = f"{m['reason']}: {best}"
+                    print(f"  <- rejected ({m['reason']}) best={best}")
                 elif k == "error":
+                    ui["err"] = str(m.get("detail"))[:60]
                     print(f"  <- ERROR   {m.get('detail')}")
 
         rx = asyncio.create_task(receive())
+        interrupted = False
         try:
-            while sent < args.frames:
+            limit = args.frames if args.frames else int(args.seconds * args.fps)
+            next_due = time.perf_counter()
+            while sent < limit:
                 if cap is not None:
                     ok, bgr = await asyncio.to_thread(cap.read)
                     if not ok:
@@ -141,7 +157,8 @@ async def run(args):
                 t = time.perf_counter() - t_start
                 if args.mode == "A":
                     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-                    hands, pose = extractor.extract(rgb, int(t * 1000))
+                    hands, pose = await asyncio.to_thread(
+                        extractor.extract, rgb, int(t * 1000))
                     msg = {"type": "landmarks", "seq": sent, "t": t,
                            "hands": {k: (v.tolist() if v is not None else None)
                                      for k, v in hands.items()},
@@ -155,13 +172,56 @@ async def run(args):
 
                 await ws.send(json.dumps(msg))
                 sent += 1
-                await asyncio.sleep(max(0.0, 1.0 / args.fps))
+
+                if show:
+                    el = time.perf_counter() - t_start
+                    ui["fps"] = sent / max(el, 1e-6)
+                    view = cv2.flip(bgr, 1)          # mirror for display ONLY
+                    view = cv2.copyMakeBorder(view, 0, 116, 0, 0,
+                                              cv2.BORDER_CONSTANT, value=(24, 24, 24))
+                    hh = view.shape[0] - 116
+                    cv2.putText(view, f"mode {args.mode}  {ui['fps']:4.1f} fps  "
+                                      f"sent {sent}", (12, hh + 24),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
+                    u = " ".join(ui["utterance"]) or "-"
+                    cv2.putText(view, f"utterance: {u[:52]}", (12, hh + 52),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (60, 220, 240), 2)
+                    cv2.putText(view, (ui["sentence"] or "(waiting)")[:58],
+                                (12, hh + 82), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                (90, 220, 90), 2)
+                    tail = ui["err"] or ui["reject"] or (
+                        f"audio {ui['audio']}" if ui["audio"] else "")
+                    cv2.putText(view, f"q to quit    {tail}", (12, hh + 106),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                                (80, 80, 240) if ui["err"] else (150, 150, 150), 1)
+                    cv2.imshow("harness -- full pipeline (LLM + speech)", view)
+                    if (cv2.waitKey(1) & 0xFF) in (ord("q"), 27):
+                        print("\n  quit requested")
+                        break
+                # Pace to a DEADLINE, not "sleep 1/fps after the work".
+                # The old form added the full interval on top of capture and
+                # encode, so a 15 fps request delivered ~10 fps -- and frame
+                # rate is the dominant factor in segmentation quality.
+                next_due += 1.0 / args.fps
+                delay = next_due - time.perf_counter()
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                else:
+                    next_due = time.perf_counter()   # behind: do not accrue debt
             t_sent_done = time.perf_counter()
             await asyncio.sleep(args.linger)
+        except KeyboardInterrupt:
+            interrupted = True
+            print("\n  interrupted -- waiting briefly for any pending audio")
+            await asyncio.sleep(min(args.linger, 3.0))
         finally:
             rx.cancel()
 
     dur = time.perf_counter() - t_start
+    if show:
+        cv2.destroyAllWindows()
+        for _ in range(4):
+            cv2.waitKey(1)
     if cap is not None:
         cap.release()
     if extractor is not None:
@@ -197,14 +257,21 @@ def main():
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--camera", type=int, default=0)
-    p.add_argument("--fps", type=float, default=15.0)
-    p.add_argument("--frames", type=int, default=60)
+    p.add_argument("--fps", type=float, default=30.0,
+                   help="target capture rate; real rate is capped by "
+                        "camera + MediaPipe (~25 fps)")
+    p.add_argument("--frames", type=int, default=0,
+                   help="stop after N frames; 0 = use --seconds")
+    p.add_argument("--seconds", type=float, default=60.0,
+                   help="how long to capture (default 60s)")
     p.add_argument("--jpeg-quality", type=int, default=70)
     p.add_argument("--width", type=int, default=640,
                    help="downscale camera frames to this width before processing")
     p.add_argument("--linger", type=float, default=3.0,
                    help="seconds to keep receiving after the last frame")
     p.add_argument("--no-audio", action="store_true")
+    p.add_argument("--no-preview", action="store_true",
+                   help="run headless (no camera window)")
     p.add_argument("--sign-language", default="ase")
     p.add_argument("--output-language", default="en")
     sys.exit(asyncio.run(run(p.parse_args())))

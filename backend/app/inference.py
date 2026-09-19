@@ -326,6 +326,23 @@ class UtteranceBuffer:
         self.glosses.append(gloss)
         self.last_t = now
 
+    def keep_alive(self, now: float) -> None:
+        """
+        Hold the utterance open because signing is happening RIGHT NOW.
+
+        Without this the timeout measures the gap between COMMITTED glosses,
+        and a gloss is only committed after its sign ends plus the quiet
+        period. So the gap is (pause + next sign duration + quiet), and with a
+        2 s timeout and 1 s signs ANY pause over ~0.85 s flushes the utterance
+        mid-sentence -- the system starts talking while you are still signing.
+
+        Called every frame the recognizer is in the SIGNING state, so the
+        timeout means "no signing ACTIVITY for N seconds" rather than "no
+        finished word for N seconds".
+        """
+        if self.glosses:
+            self.last_t = now
+
     def flush_reason(self, now: float) -> str | None:
         """Why the utterance should end now, or None to keep waiting."""
         if not self.glosses:

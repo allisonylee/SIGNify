@@ -55,8 +55,12 @@ AUDIO_FORMAT = "pcm_s16le_16000"
 # 0.008 misses ~12%. The false-positive side needs recorded REST footage to
 # tune (scripts/v010_record_rest.py); raise this if idle motion trips the gate.
 REC_MOTION_THRESHOLD = float(os.environ.get("SIGN_MOTION_THRESHOLD", "0.008"))
-REC_MIN_CONFIDENCE = float(os.environ.get("SIGN_MIN_CONFIDENCE", "0.35"))
-REC_MIN_MARGIN = float(os.environ.get("SIGN_MIN_MARGIN", "0.10"))
+# Lowered from 0.35 once the __REST__ class existed. The floor was originally
+# the ONLY thing suppressing false positives; now the rest class does that job
+# categorically, so the floor can be permissive. 0.35 was rejecting most real
+# signs from a non-fluent signer.
+REC_MIN_CONFIDENCE = float(os.environ.get("SIGN_MIN_CONFIDENCE", "0.20"))
+REC_MIN_MARGIN = float(os.environ.get("SIGN_MIN_MARGIN", "0.05"))
 REC_DEBOUNCE_S = float(os.environ.get("SIGN_DEBOUNCE_S", "1.0"))
 # Stillness that ends a sign, in SECONDS (not frames -- a frame count makes the
 # required pause depend on machine speed). Swept in backend/outputs/
@@ -82,7 +86,13 @@ REC_IGNORE_REST = os.environ.get("SIGN_IGNORE_REST", "") == "1"
 # sent to the LLM. This is the ONLY thing that decides where a sentence ends.
 # Longer  -> more words per sentence, better grammar, later speech.
 # Shorter -> snappier speech, more fragments.
-UTTERANCE_TIMEOUT_S = float(os.environ.get("SIGN_UTTERANCE_TIMEOUT_S", "2.0"))
+# Lowered from 2.0 once keep_alive() existed. Before that the timeout had to
+# cover (pause + next sign duration + quiet), so it could not be short. Now it
+# only counts GENUINE stillness, so it only has to exceed the longest still
+# pause WITHIN a sentence -- about 0.8 s in practice.
+#   shorter -> speech sooner, but a long thinking pause splits the sentence
+#   longer  -> safer grouping, later speech
+UTTERANCE_TIMEOUT_S = float(os.environ.get("SIGN_UTTERANCE_TIMEOUT_S", "1.2"))
 
 # Feature spec -- see app/landmarks.py. Single source of truth lives there.
 WINDOW_FRAMES = 32          # frames per classified window
