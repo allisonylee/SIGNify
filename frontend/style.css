@@ -1,14 +1,152 @@
+/* SIGNify — Apple-style interface foundations.
+ *
+ * Structured as tokens first, then chrome, layout, controls, surfaces, and
+ * finally the accessibility overrides. Every selector the page scripts rely on
+ * (.stage, .stage.live, .sign-*, .toggle[aria-pressed], .status[data-state],
+ * .audio-viz.live with --level/--gain, .committed/.partial/.placeholder, .field,
+ * .slider) is preserved, so no JavaScript changes with this stylesheet.
+ */
+
+/* ---- tokens --------------------------------------------------------------
+   Surfaces form an elevation ladder: --bg sits furthest back, --surface holds
+   cards, --surface-raised is the step above it, and --chrome is the floating
+   translucent layer content scrolls beneath. */
+/* Palette sampled from the reference design: pale icy background (#d4e4e4),
+   white cards, dusty blue (#aecfd4 with #708d9a as its deep tone), and blush
+   (#e9d8d2). Each accent is a PAIR — a pastel for fills and a deep tone for
+   anything small or text-bearing — because pastel fills cannot carry text at
+   4.5:1. Light is the default here; dark derives from the same hues below. */
 :root {
-  --bg: #2d3f47;
-  --header: #1c272b;
-  --text: #d4dde2;
-  --muted: rgba(212, 221, 226, 0.72);
-  --surface: #24353c;
+  color-scheme: light dark;
+
+  --bg-top: #ecd6ce;
+  --bg-bottom: #c5d8dc;
+  --bg: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  --surface: #ffffff;
+  --surface-raised: #f4f8f9;
+  /* The camera/mic stage is a container, not content, so it stays distinct from
+     the white transcript panel beside it rather than merging into one surface. */
+  --stage: #dce8ea;
+  --header: #ecd6ce;
+  --chrome: rgba(236, 214, 206, 0.62);
+  /* The bright edge where light catches the top of a translucent material. */
+  --chrome-edge: rgba(255, 255, 255, 0.9);
+
+  --text: #1f2e34;
+  --muted: rgba(31, 46, 52, 0.62);
+  --line: rgba(79, 110, 123, 0.18);
+  --tint: rgba(79, 110, 123, 0.08);
+  --tint-strong: rgba(79, 110, 123, 0.14);
+  /* Controls need more presence than a hover tint, so they get their own
+     values rather than borrowing --tint-strong. */
+  --track: rgba(79, 110, 123, 0.22);
+  --tick: rgba(79, 110, 123, 0.34);
+  /* Fades to the same colour at zero alpha. Fading to `transparent` interpolates
+     through transparent black in sRGB, which shows up as a grey band. */
+  --sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0) 58%
+  );
+
+  /* Blue: navigation and selection. */
+  --accent-fill: #aecfd4;
+  --on-accent: #17323b;
+  --accent: #4f6e7b;
+  /* Blush: interactive chrome and live capture. Dusty blue stays on the
+     current-page nav so the two colours still mean different things. */
+  --live-fill: #e9d8d2;
+  --on-live: #3d2721;
+  /* Deeper than the reference's blush: the dot and the mic bars are thin
+     graphics, and pastel on white would not clear 3:1. */
+  --live: #a2604d;
+  --blush-tint: rgba(162, 96, 77, 0.1);
+  --blush-strong: rgba(162, 96, 77, 0.2);
+  --blush-line: rgba(162, 96, 77, 0.28);
+  --danger: #a8281d;
+
   --panel: #ffffff;
-  --panel-text: #2d3f47;
-  --line: rgba(212, 221, 226, 0.16);
-  --shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
-  --radius: 20px;
+  --panel-text: #1f2e34;
+  --panel-muted: rgba(31, 46, 52, 0.5);
+
+  /* Soft, wide, and cool-tinted, as in the reference. Bigger surfaces read as
+     thicker: a tight shadow for chips, a wide one for cards, the deepest for
+     the stage. */
+  --shadow-1: 0 1px 2px rgba(79, 110, 123, 0.12);
+  --shadow-2:
+    0 10px 28px rgba(79, 110, 123, 0.16),
+    0 2px 6px rgba(79, 110, 123, 0.07);
+  --shadow-3:
+    0 26px 60px rgba(79, 110, 123, 0.2),
+    0 4px 12px rgba(79, 110, 123, 0.1);
+  --shadow: var(--shadow-2);
+
+  --radius: 22px;
+  --radius-sm: 14px;
+
+  /* The platform font already ships optical sizing and tracking tables. */
+  --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "ADLaM Display", var(--font-text);
+
+  /* Critically damped feel: fast out, settles without overshoot. --ease-in is
+     its inverse, so a reversible transition returns along the same path. */
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(1, 0, 0.68, 0.28);
+  --t-press: 100ms;
+  --t-fast: 180ms;
+  --t-base: 320ms;
+}
+
+/* Same hues, inverted lightness. The accents swap roles: the deep tone becomes
+   the fill and the pastel becomes the text on it. theme.js writes data-theme
+   before first paint; without JS the page stays on the light default. */
+:root[data-theme="dark"] {
+    --bg-top: #2c1d1a;
+    --bg-bottom: #151f23;
+    --bg: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+    --surface: #1e2c31;
+    --surface-raised: #26373d;
+    --stage: #223238;
+    --header: #2c1d1a;
+    --chrome: rgba(44, 29, 26, 0.68);
+    --chrome-edge: rgba(255, 255, 255, 0.09);
+
+    --text: #e6eef0;
+    --muted: rgba(230, 238, 240, 0.62);
+    --line: rgba(197, 217, 223, 0.16);
+    --tint: rgba(197, 217, 223, 0.08);
+    --tint-strong: rgba(197, 217, 223, 0.15);
+    --track: rgba(197, 217, 223, 0.24);
+    --tick: rgba(197, 217, 223, 0.34);
+    --sheen: linear-gradient(
+      180deg,
+      rgba(197, 217, 223, 0.06),
+      rgba(197, 217, 223, 0) 58%
+    );
+
+    --accent-fill: #4f6e7b;
+    --on-accent: #f2f8f9;
+    --accent: #a6c6ce;
+    --live-fill: #8f5344;
+    --on-live: #fbeee9;
+    --live: #dda08c;
+    --blush-tint: rgba(221, 160, 140, 0.12);
+    --blush-strong: rgba(221, 160, 140, 0.22);
+    --blush-line: rgba(221, 160, 140, 0.32);
+    --danger: #f0a9a0;
+
+    --panel: #ffffff;
+    --panel-text: #1f2e34;
+    --panel-muted: rgba(31, 46, 52, 0.5);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.32);
+    --shadow-2:
+      0 10px 28px rgba(0, 0, 0, 0.34),
+      0 2px 6px rgba(0, 0, 0, 0.2);
+    --shadow-3:
+      0 26px 60px rgba(0, 0, 0, 0.44),
+      0 4px 12px rgba(0, 0, 0, 0.24);
 }
 
 *,
@@ -19,6 +157,25 @@
 
 html {
   height: 100%;
+  background: var(--bg-bottom);
+}
+
+/* Ease the scheme change itself. data-theme-ready is set after first paint so
+   the initial load does not animate from the default tokens. */
+html[data-theme-ready],
+html[data-theme-ready] body,
+html[data-theme-ready] header,
+html[data-theme-ready] .stage,
+html[data-theme-ready] .genText,
+html[data-theme-ready] .settings-card,
+html[data-theme-ready] .toggle,
+html[data-theme-ready] .menu a,
+html[data-theme-ready] select {
+  transition:
+    background-color var(--t-base) var(--ease-out),
+    color var(--t-base) var(--ease-out),
+    border-color var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
 }
 
 body {
@@ -26,12 +183,14 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background: var(--bg) fixed;
   color: var(--text);
-  font-family: "Google Sans", sans-serif;
-  font-weight: 600;
+  font-family: var(--font-text);
+  font-size: 100%;
+  font-weight: 400;
+  line-height: 1.5;
   font-optical-sizing: auto;
-  font-variation-settings: "GRAD" 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -45,9 +204,14 @@ ul {
   padding: 0;
 }
 
+/* ---- chrome --------------------------------------------------------------
+   The page wash is viewport-fixed, so a transparent header sits in the same
+   gradient instead of frosting a separate material over it. */
 header {
-  background: var(--header);
-  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: transparent;
 }
 
 .header-inner {
@@ -56,60 +220,91 @@ header {
   justify-content: space-between;
   gap: 1rem;
   width: min(1180px, 94%);
-  min-height: 72px;
+  min-height: 68px;
   margin: 0 auto;
-  padding: 0.85rem 0;
+  padding: 0.75rem 0;
 }
 
 header h1 {
   margin: 0;
-  font-family: "ADLaM Display", system-ui;
-  font-size: 1.85rem;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
   font-weight: 400;
-  letter-spacing: 0.01em;
+  /* Large type reads too loose as it grows, so tracking goes negative. */
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .menu ul {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.25rem;
 }
 
 .menu a {
   display: inline-block;
-  padding: 0.55rem 0.95rem;
+  padding: 0.5rem 0.95rem;
   border-radius: 999px;
   color: var(--muted);
-  transition: background 0.2s ease, color 0.2s ease;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: -0.003em;
+  transition:
+    background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    transform var(--t-press) var(--ease-out);
 }
 
-.menu a:hover,
-.menu a:focus-visible {
-  color: var(--text);
-  background: rgba(212, 221, 226, 0.08);
+@media (hover: hover) {
+  .menu a:hover {
+    color: var(--text);
+    background: var(--tint);
+  }
+}
+
+/* Feedback lives on the press, not the release. */
+.menu a:active {
+  transform: scale(0.96);
 }
 
 .menu a.active {
-  color: var(--header);
-  background: var(--text);
+  color: var(--on-accent);
+  background: var(--accent-fill);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
 }
 
+.menu a:focus-visible,
+.toggle:focus-visible,
+select:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+
+/* ---- layout & type ------------------------------------------------------- */
 main {
   flex: 1;
   width: min(1180px, 94%);
   margin: 0 auto;
-  padding: 2rem 0 3rem;
+  padding: 2.25rem 0 3.5rem;
 }
 
 h2 {
-  margin: 0 0 0.35rem;
-  font-size: clamp(1.7rem, 2.4vw, 2.15rem);
+  margin: 0 0 0.3rem;
+  font-size: clamp(2rem, 2.7vw, 2.5rem);
+  font-weight: 700;
+  /* Tight leading and negative tracking belong together at display sizes. */
+  line-height: 1.07;
+  letter-spacing: -0.022em;
 }
 
 h3 {
   margin: 0 0 1.25rem;
-  font-size: 1.05rem;
+  font-size: 1.0625rem;
   font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.004em;
   color: var(--muted);
 }
 
@@ -126,32 +321,41 @@ h3 {
   margin-bottom: 0;
 }
 
+/* ---- controls ------------------------------------------------------------ */
 .toggle {
-  padding: 0.55rem 1.15rem;
-  background: transparent;
+  padding: 0.5rem 1.15rem;
+  background: var(--tint);
   border: 1px solid var(--line);
   border-radius: 999px;
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-}
-
-.toggle:hover {
   color: var(--text);
-  background: rgba(212, 221, 226, 0.08);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: -0.003em;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    transform var(--t-press) var(--ease-out);
 }
 
-.toggle:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
+@media (hover: hover) {
+  .toggle:hover {
+    background: var(--tint-strong);
+  }
+}
+
+.toggle:active {
+  transform: scale(0.97);
 }
 
 .toggle[aria-pressed="true"] {
-  background: var(--text);
-  border-color: var(--text);
-  color: var(--header);
+  background: var(--accent-fill);
+  border-color: transparent;
+  color: var(--on-accent);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
 }
 
 .toggle:disabled {
@@ -165,9 +369,12 @@ h3 {
   gap: 0.9rem;
 }
 
+/* Small text over a translucent layer needs a little more weight and tracking
+   than body copy, or it goes soft against a moving background. */
 .status {
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 500;
+  letter-spacing: 0.008em;
   color: var(--muted);
 }
 
@@ -184,15 +391,17 @@ h3 {
 
 .status[data-state="live"] {
   color: var(--text);
+  font-weight: 600;
 }
 
 .status[data-state="live"]::before {
   opacity: 1;
+  background: var(--live);
   animation: status-pulse 1.6s ease-in-out infinite;
 }
 
 .status[data-state="error"] {
-  color: #f0a9a0;
+  color: var(--danger);
 }
 
 @keyframes status-pulse {
@@ -209,12 +418,14 @@ h3 {
 .note {
   margin: -0.5rem 0 1.1rem;
   max-width: 68ch;
-  color: #f0a9a0;
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 500;
-  line-height: 1.45;
+  line-height: 1.5;
+  letter-spacing: 0.006em;
+  color: var(--muted);
 }
 
+/* ---- workspace surfaces -------------------------------------------------- */
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
@@ -226,7 +437,8 @@ h3 {
 .genText,
 .settings-card {
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
 }
 
 .stage {
@@ -234,13 +446,10 @@ h3 {
   align-items: center;
   justify-content: center;
   min-height: 360px;
-  background:
-    linear-gradient(180deg, rgba(212, 221, 226, 0.05), transparent 42%),
-    var(--surface);
-  border: 1px dashed rgba(212, 221, 226, 0.28);
+  background: var(--sheen), var(--stage);
   color: var(--muted);
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+  font-size: 1.0625rem;
+  letter-spacing: -0.004em;
 }
 
 .mic-input {
@@ -260,7 +469,8 @@ h3 {
 .audio-viz span {
   width: 0.5rem;
   height: 100%;
-  background: var(--muted);
+  background: var(--live);
+  opacity: 0.55;
   border-radius: 999px;
   transform-origin: bottom;
   animation: audio-bar 1.3s ease-in-out infinite;
@@ -278,7 +488,8 @@ h3 {
    keyframe loop has to get out of the way. */
 .audio-viz.live span {
   animation: none;
-  background: var(--text);
+  opacity: 1;
+  background: var(--live);
   transform: scaleY(clamp(0.12, calc(var(--level, 0) * var(--gain, 1)), 1));
   transition: transform 90ms ease-out;
 }
@@ -294,51 +505,46 @@ h3 {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .audio-viz span {
-    animation: none;
-    transform: scaleY(0.4);
-  }
-
-  .status[data-state="live"]::before {
-    animation: none;
-  }
-}
-
+/* A solid surface, deliberately: a light translucent layer over a light
+   background destroys legibility. */
 .genText {
   margin: 0;
   min-height: 360px;
-  padding: 1.4rem 1.5rem;
+  padding: 1.5rem 1.6rem;
   background: var(--panel);
   color: var(--panel-text);
-  font-size: 1.15rem;
-  font-weight: 500;
-  line-height: 1.55;
+  font-size: 1.1875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
   overflow-y: auto;
 }
 
 .placeholder {
-  color: rgba(45, 63, 71, 0.55);
+  color: var(--panel-muted);
 }
 
 /* Interim text the model may still revise, set apart from committed text. */
 .partial {
-  color: rgba(45, 63, 71, 0.5);
+  color: var(--panel-muted);
 }
 
 .partial:not(:empty)::before {
   content: " ";
 }
 
+/* ---- settings ------------------------------------------------------------ */
 .settings-grid {
   display: grid;
   gap: 1rem;
 }
 
 .settings-card {
-  padding: 1.35rem 1.5rem;
+  padding: 1.5rem 1.6rem;
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 1px 0 var(--blush-line);
 }
 
 .settings-card h3 {
@@ -346,14 +552,15 @@ h3 {
   color: var(--text);
   font-size: 1.15rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .field {
   display: grid;
-  gap: 0.4rem;
-  margin-top: 1rem;
-  font-size: 0.92rem;
-  font-weight: 500;
+  gap: 0.45rem;
+  margin-top: 1.15rem;
+  font-size: 0.9375rem;
+  font-weight: 400;
   color: var(--muted);
 }
 
@@ -364,6 +571,7 @@ h3 {
 .field span {
   color: var(--text);
   font-weight: 600;
+  letter-spacing: -0.003em;
 }
 
 select,
@@ -371,19 +579,84 @@ input[type="range"] {
   width: 100%;
   font: inherit;
   color: var(--text);
-  accent-color: var(--text);
 }
 
 select {
-  padding: 0.6rem 0.75rem;
-  background: var(--header);
+  padding: 0.65rem 0.8rem;
+  background: var(--surface-raised);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    transform var(--t-press) var(--ease-out);
 }
 
+@media (hover: hover) {
+  select:hover {
+    border-color: var(--tint-strong);
+  }
+}
+
+select:active {
+  transform: scale(0.995);
+}
+
+/* Custom track and knob: the native control cannot carry the theme's colors
+   in both schemes, and the knob is too small to grab confidently. */
 input[type="range"] {
-  height: 1.4rem;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.5rem;
   margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--blush-strong);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  /* Centres the knob on a 0.375rem track. */
+  margin-top: -0.4375rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--t-press) var(--ease-out);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--blush-strong);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--t-press) var(--ease-out);
+}
+
+/* Grabbing the knob grows it toward the finger. */
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+input[type="range"]:active::-moz-range-thumb {
+  transform: scale(1.15);
 }
 
 .slider {
@@ -394,15 +667,66 @@ input[type="range"] {
 .slider-ticks {
   display: flex;
   justify-content: space-between;
-  padding: 0 0.5rem;
+  /* Half the knob's width, so the end ticks line up with its travel limits. */
+  padding: 0 0.625rem;
 }
 
 .slider-ticks span {
   width: 1px;
   height: 0.4rem;
-  background: rgba(212, 221, 226, 0.32);
+  background: var(--blush-line);
 }
 
+/* .note's negative top margin tightens it under a page subhead. Here it sits
+   below the last slider instead, where that pull lands on the tick marks. */
+.settings-card .note {
+  margin: 0.9rem 0 0;
+}
+
+.segmented {
+  display: flex;
+  padding: 0.2rem;
+  background: var(--blush-tint);
+  border: 1px solid var(--blush-line);
+  border-radius: 999px;
+}
+
+.segment {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.7rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.003em;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    transform var(--t-press) var(--ease-out);
+}
+
+.segment:active {
+  transform: scale(0.97);
+}
+
+.segment[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+
+/* ---- breakpoints --------------------------------------------------------- */
 @media (min-width: 861px) {
   .field {
     grid-template-columns: minmax(0, 210px) minmax(0, 1fr);
@@ -415,7 +739,7 @@ input[type="range"] {
   .header-inner {
     flex-direction: column;
     align-items: flex-start;
-    padding: 1rem 0;
+    padding: 0.9rem 0;
   }
 
   .menu ul {
@@ -432,6 +756,7 @@ input[type="range"] {
     min-height: 240px;
   }
 }
+
 /* ---- sign page: live camera stage ---------------------------------------
    sign.js replaces the "Camera feed" placeholder inside .stage with a <video>
    and two status lines. .stage is a centred flex row by default, so it is
@@ -449,7 +774,7 @@ input[type="range"] {
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
-  border-radius: calc(var(--radius) - 6px);
+  border-radius: calc(var(--radius) - 8px);
   background: #000;
   object-fit: cover;
   /* MIRRORED FOR DISPLAY ONLY. sign.js draws the un-mirrored frame to its
@@ -461,15 +786,16 @@ input[type="range"] {
 .sign-glosses {
   margin: 0;
   min-height: 1.4em;
-  font-size: 1.05rem;
+  font-size: 1.0625rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--panel-text, #e9eef1);
+  letter-spacing: 0.01em;
+  color: var(--text);
 }
 
 .sign-status {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
+  letter-spacing: 0.006em;
   color: var(--muted);
 }
 
@@ -481,5 +807,75 @@ input[type="range"] {
 }
 
 .stage.live {
-  border-style: solid;
+  border-color: var(--blush-line);
+}
+
+/* ---- accessibility ------------------------------------------------------
+   Three independent signals, handled independently. Reduced motion still gets
+   feedback, just without movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .audio-viz span {
+    animation: none;
+    transform: scaleY(0.4);
+  }
+
+  .status[data-state="live"]::before {
+    animation: none;
+  }
+
+  .menu a:active,
+  .toggle:active,
+  .segment:active,
+  select:active,
+  input[type="range"]:active::-webkit-slider-thumb {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  header {
+    background: var(--header);
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --muted: var(--text);
+    --line: rgba(31, 46, 52, 0.5);
+    --tint-strong: rgba(31, 46, 52, 0.3);
+    --track: rgba(31, 46, 52, 0.45);
+    --tick: rgba(31, 46, 52, 0.65);
+    --chrome: var(--header);
+  }
+
+  header {
+    background: var(--header);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .stage,
+  .genText,
+  .settings-card,
+  select,
+  .toggle {
+    border-width: 2px;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root[data-theme="dark"] {
+    --line: rgba(230, 238, 240, 0.45);
+    --tint-strong: rgba(230, 238, 240, 0.3);
+    --track: rgba(230, 238, 240, 0.5);
+    --tick: rgba(230, 238, 240, 0.7);
+  }
 }

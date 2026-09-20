@@ -4,17 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Signagram</title>
+    <meta name="color-scheme" content="light dark">
+    <title>SIGNify</title>
     <link rel="stylesheet" href="style.css">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=ADLaM+Display&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=ADLaM+Display&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
   </head>
   <body>
     <header>
       <div class="header-inner">
-      <h1><a href="./index.html">Signagram</a></h1>
+      <h1><a href="./index.html">SIGNify</a></h1>
       <nav class="menu" aria-label="Primary">
         <ul>
           <li><a href="./index.html">Sign</a></li>
@@ -30,6 +32,14 @@
       <h3>Preferences for live translation</h3>
       <section class="settings-grid" aria-label="Settings">
         <article class="settings-card">
+          <div class="field">
+            <span id="appearance-label">Appearance</span>
+            <div class="segmented" id="appearance" role="radiogroup" aria-labelledby="appearance-label">
+              <button type="button" class="segment" role="radio" data-theme-choice="system" aria-checked="true">System</button>
+              <button type="button" class="segment" role="radio" data-theme-choice="light" aria-checked="false">Light</button>
+              <button type="button" class="segment" role="radio" data-theme-choice="dark" aria-checked="false">Dark</button>
+            </div>
+          </div>
           <label class="field">
             <span>Signed Language</span>
             <select id="signedLanguage">
