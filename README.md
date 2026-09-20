@@ -1,4 +1,4 @@
-# Signify
+# SIGNify
 
 Live sign language to text and speech. A webcam feed of someone signing becomes
 a grammatical sentence, spoken aloud in the language the other person speaks.
