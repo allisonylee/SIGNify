@@ -63,7 +63,18 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
+        # Allow the token to be fetched by a page served from a DIFFERENT local
+        # origin. In practice that is VS Code Live Preview on :3000, which
+        # people keep opening the pages from; without this the fallback in
+        # speech.js is blocked by CORS and the 404 just becomes a CORS error.
+        self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def do_POST(self) -> None:
         if self.path.partition("?")[0] != TOKEN_PATH:

@@ -110,13 +110,50 @@ function toBase64(buffer) {
   return btoa(binary);
 }
 
-async function fetchToken() {
-  const response = await fetch(TOKEN_ENDPOINT, { method: "POST" });
+/**
+ * Where serve.py is, when this page was NOT served by it.
+ *
+ * `/api/scribe-token` is a relative path, so it only resolves when serve.py
+ * served the page. Opening the pages from VS Code Live Preview (or any other
+ * static server) instead makes that a 404 -- which has now cost two debugging
+ * sessions. On localhost we therefore retry against serve.py's own port rather
+ * than reporting a 404 that looks like a broken backend.
+ *
+ * Deliberately localhost-only: in production the page is served by a host that
+ * proxies /api to the real backend, and a hardcoded dev port must never be
+ * tried there.
+ */
+const LOCAL_TOKEN_FALLBACK = "http://127.0.0.1:8080/api/scribe-token";
+
+function isLocal() {
+  return ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+}
+
+async function requestToken(url) {
+  const response = await fetch(url, { method: "POST" });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error ?? `token request failed (${response.status})`);
+    const err = new Error(payload.error ?? `token request failed (${response.status})`);
+    err.status = response.status;
+    throw err;
   }
   return payload.token;
+}
+
+async function fetchToken() {
+  try {
+    return await requestToken(TOKEN_ENDPOINT);
+  } catch (error) {
+    const servedElsewhere = error.status === 404 || error.status === undefined;
+    if (!isLocal() || !servedElsewhere
+        || location.origin === new URL(LOCAL_TOKEN_FALLBACK).origin) {
+      throw error;
+    }
+    console.warn("[speech] no /api/scribe-token on this origin "
+                 + `(${location.origin}); falling back to serve.py. `
+                 + "Open the page from http://127.0.0.1:8080 to avoid this.");
+    return requestToken(LOCAL_TOKEN_FALLBACK);
+  }
 }
 
 function buildSocketUrl(token, languageCode) {
