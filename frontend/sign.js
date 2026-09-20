@@ -69,20 +69,21 @@ function buildStage() {
   ui.status = document.createElement("p");
   ui.status.className = "sign-status";
   ui.status.setAttribute("role", "status");
-  ui.glosses = document.createElement("p");
-  ui.glosses.className = "sign-glosses";
-  stage.append(ui.video, ui.glosses, ui.status);
+  stage.append(ui.video, ui.status);
 }
 
 function setStatus(text) {
   ui.status.textContent = text;
 }
 
-/** Progress as the signs land: "hello me happy · 3/5". */
+/**
+ * The live word list used to show under the camera. That caption is gone -- the
+ * stage is the camera and nothing else -- so this only logs now. Kept as one
+ * function so the three call sites do not each need a conditional, and so
+ * putting the readout back is a one-line change.
+ */
 function showGlosses(list) {
-  ui.glosses.textContent = list.length
-    ? list.join(" ")
-    : "";
+  if (list.length) console.debug("[sign] glosses:", list.join(" "));
 }
 
 /**
